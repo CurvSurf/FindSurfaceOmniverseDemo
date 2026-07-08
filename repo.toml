@@ -1,0 +1,134 @@
+########################################################################################################################
+# Repo tool base settings
+########################################################################################################################
+
+[repo]
+import_configs = [
+    "${root}/_repo/deps/repo_kit_tools/kit-template/repo.toml",
+    "${root}/_repo/deps/repo_kit_tools/kit-template/repo-external-app.toml",
+]
+name = "findsurface-omniverse-demo"
+
+[repo.folders]
+version_file = "${root}/VERSION.md"
+
+[repo_build]
+fetch."platform:linux-x86_64".before_pull_commands = [
+    ["mkdir", "--parents", "${root}/source/apps"],
+]
+fetch."platform:windows-x86_64".before_pull_commands = [
+    ["powershell", "-Command", "New-Item -ItemType Directory -Path ${root}/source/apps -ErrorAction SilentlyContinue", ";", "Write-Host 'Done'"],
+]
+fetch."token:cache==true".after_pull_commands = []
+fetch.packman_target_files_to_pull = [
+    "${root}/tools/deps/host-deps.packman.xml",
+    "${root}/tools/deps/kit-sdk.packman.xml",
+    "${root}/tools/deps/kit-sdk-deps.packman.xml",
+]
+
+[repo_build.build]
+enabled = true
+"platform:windows-x86_64".enabled = false
+
+[repo_build.msbuild]
+link_host_toolchain = false
+vs_version = "vs2022"
+
+[repo_build.docker]
+enabled = false
+
+[repo_build.fetch.pip]
+files_to_pull = [
+    "${root}/tools/deps/pip.toml"
+]
+licensing_enabled = false
+publish_pip_cache = false
+
+[repo_precache_exts]
+apps = [
+    "${root}/source/apps/com.curvsurf.findsurface_omniverse_demo.kit",
+]
+registries = [
+    { name = "kit/default", url = "https://ovextensionsprod.blob.core.windows.net/exts/kit/prod/${kit_version_major}/shared" },
+    { name = "kit/sdk", url = "https://ovextensionsprod.blob.core.windows.net/exts/kit/prod/sdk/${kit_version_short}/${kit_git_hash}" },
+    { name = "kit/community", url = "https://dw290v42wisod.cloudfront.net/exts/kit/community" },
+]
+generated_app_path = "${root}/_build/apps/exts.deps.generated.kit"
+
+[repo_package.packages.fat_package]
+root = "_build/$${platform}/$${config}"
+archive_name = "FindSurface_Omniverse_Demo-fat"
+omniverse_flow_version_scheme = true
+package_per_config = true
+append_config = true
+archive_format = "zip"
+windows_max_path_length = 0
+files = [
+    ["**"],
+]
+files_exclude = [
+    ["_*/**"],
+    [".*/**"],
+    ["**/*.pdb"],
+    ["**/*.exp"],
+    ["baseapp/**"],
+    ["extsbuild/**"],
+    ["cache/**"],
+    ["data/**"],
+    ["logs/**"],
+    ["apps/kit.portable"],
+    ["**/__pycache__"],
+    ["**/_repo/**"],
+]
+"linux-x86_64".files_strip = []
+
+[repo_package.packages.thin_package]
+root = "_build/$${platform}/$${config}"
+archive_name = "FindSurface_Omniverse_Demo-thin"
+omniverse_flow_version_scheme = true
+package_per_config = true
+append_config = true
+archive_format = "zip"
+windows_max_path_length = 0
+files = [
+    ["**"],
+]
+files_exclude = [
+    ["_*/**"],
+    [".*/**"],
+    ["**/*.pdb"],
+    ["**/*.exp"],
+    ["kit/**"],
+    ["extscache/**"],
+    ["extsbuild/**"],
+    ["baseapp/**"],
+    ["cache/**"],
+    ["data/**"],
+    ["logs/**"],
+    ["apps/kit.portable"],
+    ["**/__pycache__"],
+    ["**/_repo/**"],
+]
+"linux-x86_64".files_strip = []
+
+[repo_kit_template]
+extension_templates_config = "templates/templates.toml"
+
+[repo_launch]
+default_app = "com.curvsurf.findsurface_omniverse_demo.kit"
+type_ordering = [
+    "ApplicationTemplate",
+    "ApplicationLayerTemplate",
+]
+
+[repo_launch_app]
+enabled = true
+
+[repo_package_app]
+enabled = true
+
+[repo_kit_package_container]
+package_cmd = "_package"
+enabled = true
+gui_cli = true
+auto_generate = true

@@ -1,0 +1,26 @@
+[package]
+title = "FindSurface No Viewport Debug Validation"
+version = "1.0.0"
+description = "FindSurface bootstrap diagnostic shell with renderer debug validation enabled and viewport construction skipped."
+
+[settings]
+app.name = "FindSurface"
+app.version = "1.0.0"
+app.window.title = "FindSurface No Viewport Debug Validation"
+app.window.width = 1600
+app.window.height = 900
+app.fastShutdown = false
+renderer.debug.validation.enabled = true
+findsurface.bootstrap.coreOnly = true
+findsurface.diagnostics.skipViewport = true
+
+[settings.app.exts]
+folders.'++' = [
+    "${app}/../extensions",
+    "${app}/../exts",
+    "${app}/../extscache",
+]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"com.curvsurf.findsurface_omniverse" = {}

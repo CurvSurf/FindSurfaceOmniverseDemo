@@ -1,0 +1,22 @@
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.py text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.kit text eol=lf
+*.usd text eol=lf
+*.usda text eol=lf
+*.xyz text eol=lf
+CMakeLists.txt text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.gitmodules text eol=lf
+
+templates/** -whitespace
+tools/ci/** -whitespace
+tools/packman/** -whitespace
+tools/packman/packman text eol=lf -whitespace

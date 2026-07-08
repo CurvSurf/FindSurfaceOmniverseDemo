@@ -1,0 +1,27 @@
+[package]
+title = "FindSurface Debug Validation"
+version = "1.0.0"
+description = "FindSurface Kit application shell with renderer debug validation enabled."
+
+[settings]
+app.name = "FindSurface"
+app.version = "1.0.0"
+app.window.title = "FindSurface Omniverse"
+app.window.width = 1600
+app.window.height = 900
+app.fastShutdown = false
+renderer.debug.validation.enabled = true
+findsurface.bootstrap.coreOnly = true
+findsurface.diagnostics.textToolbar = true
+findsurface.diagnostics.groupBoxWindow = true
+
+[settings.app.exts]
+folders.'++' = [
+    "${app}/../extensions",
+    "${app}/../exts",
+    "${app}/../extscache",
+]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"com.curvsurf.findsurface_omniverse" = {}

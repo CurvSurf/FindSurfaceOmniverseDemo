@@ -1,0 +1,41 @@
+[package]
+title = "FindSurface Omniverse Demo"
+version = "1.0.0"
+description = "CurvSurf FindSurface demo application for NVIDIA Omniverse Kit."
+keywords = ["app", "findsurface", "point-cloud", "geometry-detection"]
+
+[settings]
+app.name = "FindSurface"
+app.version = "1.0.0"
+app.window.title = "FindSurface Omniverse"
+app.window.width = 1600
+app.window.height = 900
+app.fastShutdown = false
+findsurface.bootstrap.coreOnly = true
+
+[settings.app.exts]
+folders.'++' = [
+    "${app}/../extensions",
+    "${app}/../exts",
+    "${app}/../extscache",
+]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"com.curvsurf.findsurface_omniverse" = {}
+
+
+########################################################################################################################
+# BEGIN GENERATED PART (Remove from 'BEGIN' to 'END' to regenerate)
+########################################################################################################################
+
+# Kit SDK Version: 110.1.2+production.326809.f9bf0dda.gl
+
+# Version lock for all dependencies:
+[settings.app.exts]
+enabled = [
+]
+
+########################################################################################################################
+# END GENERATED PART
+########################################################################################################################

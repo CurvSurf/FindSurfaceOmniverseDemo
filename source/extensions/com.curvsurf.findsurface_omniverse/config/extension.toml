@@ -1,0 +1,19 @@
+[package]
+title = "FindSurface Omniverse App"
+version = "1.0.0"
+description = "Point-cloud import, viewport picking, visualization, workspace, and geometry export workflows built on the reusable FindSurface extension."
+category = "Geometry"
+keywords = ["findsurface", "point-cloud", "geometry-detection", "omniverse-app"]
+
+[dependencies]
+"omni.ui" = {}
+"omni.ui.scene" = {}
+"omni.appwindow" = {}
+"omni.kit.actions.core" = {}
+"omni.kit.menu.utils" = {}
+"omni.kit.window.filepicker" = {}
+"omni.usd" = {}
+"com.findsurface.bootstrap" = {}
+
+[[python.module]]
+name = "findsurface_omniverse.extension"
