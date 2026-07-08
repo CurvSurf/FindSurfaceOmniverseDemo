@@ -1,6 +1,8 @@
 # FindSurface Omniverse Demo
 
-CurvSurf FindSurface(TM) demo application for NVIDIA Omniverse Kit.
+**Curv*Surf* FindSurface(TM)** demo application for NVIDIA Omniverse Kit.
+
+[FindSurface](https://github.com/CurvSurf/FindSurface) / [FindSurface Omniverse Extension](https://github.com/CurvSurf/FindSurfaceOmniverseExtension)
 
 This repository is organized as an NVIDIA Kit App Template project so Omniverse
 developers can build, launch, and package the demo with the standard `repo`
