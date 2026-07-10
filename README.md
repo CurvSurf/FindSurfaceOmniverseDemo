@@ -28,6 +28,13 @@ extensions from NVIDIA's official distribution endpoints during build or thin
 package installation. Use of NVIDIA Omniverse Kit is governed by NVIDIA's
 applicable license terms.
 
+See what it looks like in action in the video below.
+
+[![video](https://img.youtube.com/vi/4gWRY8anV6E/maxresdefault.jpg)](https://www.youtube.com/watch?v=4gWRY8anV6E)
+
+Click the thumbnail above or [here](https://www.youtube.com/watch?v=4gWRY8anV6E) to watch the video on YouTube.
+
+
 ## From Source
 
 Clone the repository, including submodules when the reusable FindSurface
