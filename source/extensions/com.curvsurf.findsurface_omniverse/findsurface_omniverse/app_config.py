@@ -13,6 +13,7 @@ DEFAULT_APP_CONFIG = {
         "Edit this file to change initial FindSurface app values.",
         "If this file is deleted, the app recreates it from built-in defaults.",
         "Workspace files can still restore their own saved settings after these defaults are applied.",
+        "File dialog directories in this shared config should be extension-relative; local external paths are kept for the current session only.",
     ],
     "detection": {
         "detection_type": "Auto",
@@ -70,7 +71,7 @@ DEFAULT_APP_CONFIG = {
     },
     "parameter_pad": {
         "default_axes": {
-            "x": "mean_distance",
+            "x": "seed_radius",
             "y": "measurement_accuracy",
         },
     },

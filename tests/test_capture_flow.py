@@ -446,6 +446,7 @@ def make_extension():
     )
     ext._hover_index = 0
     ext._selected_index = 1
+    ext._detection_paused = False
     ext._auto_detect_result = None
     ext._auto_detect_source = None
     ext._last_successful_auto_detect_result = None
@@ -566,6 +567,7 @@ def make_extension():
     ext._status_message = "No data loaded"
     ext._save_button = Button()
     ext._undo_button = Button()
+    ext._toolbar_inspect_button = None
     ext._toolbar_detection_buttons = {}
     ext._toolbar_projection_buttons = {}
     ext._visibility_buttons = {}
@@ -1145,6 +1147,19 @@ class CaptureFlowTests(unittest.TestCase):
         )
         self.assertIsNone(ext._recent_file_directory(extension.FILE_DIALOG_SAVE_WORKSPACE))
 
+    def test_recent_file_directories_resolve_relative_to_extension_root(self):
+        ext = make_extension()
+        ext._app_config = {
+            "recent_file_directories": {
+                extension.FILE_DIALOG_IMPORT_POINTS: "data/presets/pointclouds",
+            }
+        }
+
+        self.assertEqual(
+            ext._load_recent_file_directories()[extension.FILE_DIALOG_IMPORT_POINTS],
+            os.path.normpath(os.path.join(ext._extension_root(), "data", "presets", "pointclouds")),
+        )
+
     def test_accepted_file_paths_update_recent_directories_by_operation(self):
         ext = make_extension()
         ext._file_dialog = types.SimpleNamespace(hide=lambda: None)
@@ -1166,7 +1181,30 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertEqual(ext._recent_file_directories[extension.FILE_DIALOG_SAVE_WORKSPACE], r"E:\saves")
         self.assertEqual(ext._recent_file_directories[extension.FILE_DIALOG_EXPORT_GEOMETRIES], r"F:\exports")
 
-    def test_remembered_file_dialog_directory_is_written_to_app_config(self):
+    def test_remembered_extension_file_dialog_directory_is_written_to_app_config_as_relative_path(self):
+        ext = make_extension()
+        written = []
+        previous_write = extension.app_config.write_app_config
+        ext._app_config = {"recent_file_directories": {}}
+        ext._app_config_path = r"C:\settings\app_defaults.json"
+        extension.app_config.write_app_config = lambda path, config: written.append((path, dict(config)))
+        path = os.path.join(ext._extension_root(), "data", "presets", "pointclouds", "cloud.xyz")
+        try:
+            ext._remember_file_dialog_directory(extension.FILE_DIALOG_IMPORT_POINTS, path)
+        finally:
+            extension.app_config.write_app_config = previous_write
+
+        self.assertEqual(
+            ext._recent_file_directories[extension.FILE_DIALOG_IMPORT_POINTS],
+            os.path.normpath(os.path.join(ext._extension_root(), "data", "presets", "pointclouds")),
+        )
+        self.assertEqual(
+            ext._app_config["recent_file_directories"][extension.FILE_DIALOG_IMPORT_POINTS],
+            "data/presets/pointclouds",
+        )
+        self.assertEqual(written[0][0], r"C:\settings\app_defaults.json")
+
+    def test_remembered_external_file_dialog_directory_is_not_written_to_app_config(self):
         ext = make_extension()
         written = []
         previous_write = extension.app_config.write_app_config
@@ -1179,8 +1217,8 @@ class CaptureFlowTests(unittest.TestCase):
             extension.app_config.write_app_config = previous_write
 
         self.assertEqual(ext._recent_file_directories[extension.FILE_DIALOG_IMPORT_POINTS], r"C:\clouds")
-        self.assertEqual(ext._app_config["recent_file_directories"][extension.FILE_DIALOG_IMPORT_POINTS], r"C:\clouds")
-        self.assertEqual(written[0][0], r"C:\settings\app_defaults.json")
+        self.assertEqual(ext._app_config["recent_file_directories"], {})
+        self.assertEqual(written, [])
 
     def test_workspace_load_fully_restores_saved_camera_state(self):
         ext = make_extension()
@@ -1276,6 +1314,14 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertFalse(snapshot["auto_detect"])
         self.assertTrue(snapshot["sticky_auto_preview"])
 
+    def test_settings_snapshot_includes_parameter_pad_axes(self):
+        ext = make_extension()
+        ext._parameter_pad_axes = {"x": "seed_radius", "y": "measurement_accuracy"}
+
+        snapshot = ext._settings_snapshot()
+
+        self.assertEqual(snapshot["parameter_pad_axes"], {"x": "seed_radius", "y": "measurement_accuracy"})
+
     def test_workspace_load_ignores_legacy_boolean_numeric_settings(self):
         ext = make_extension()
         install_display_models(ext)
@@ -1305,6 +1351,33 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertEqual(ext._viewport.point_size, original_point_size)
         self.assertEqual(ext._models["radial_expansion"].as_int, 5)
         self.assertFalse(ext._viewport.inlier_points_visible)
+
+    def test_workspace_settings_sync_parameter_pad_axes_labels_and_handle(self):
+        ext = make_extension()
+        install_detection_parameter_pad_models(ext)
+        ext._parameter_pad_axes = {"x": "mean_distance", "y": "measurement_accuracy"}
+        ext._parameter_pad_value_labels = {"x": Label(), "y": Label()}
+        horizontal = types.SimpleNamespace(width=0.0)
+        vertical = types.SimpleNamespace(height=0.0)
+        ext._parameter_pad_handle_spacers["seed_radius:measurement_accuracy"] = (horizontal, vertical)
+
+        ext._apply_workspace_settings(
+            {
+                "parameter_pad_axes": {"x": "seed_radius", "y": "measurement_accuracy"},
+                "seed_radius": 0.30,
+                "measurement_accuracy": 0.0255,
+            }
+        )
+
+        max_offset = ext.PARAMETER_PAD_SIZE - ext.PARAMETER_PAD_HANDLE_SIZE
+        self.assertEqual(ext._parameter_pad_axes, {"x": "seed_radius", "y": "measurement_accuracy"})
+        self.assertEqual(ext._parameter_pad_value_labels["x"].text, "0.3000")
+        self.assertEqual(ext._parameter_pad_value_labels["y"].text, "0.0255")
+        self.assertAlmostEqual(horizontal.width, max_offset * ((0.30 - 0.05) / (0.50 - 0.05)))
+        self.assertAlmostEqual(vertical.height, max_offset * 0.5)
+        position = ext._parameter_pad_positions["seed_radius:measurement_accuracy"]
+        self.assertAlmostEqual(position[0], (0.30 - 0.05) / (0.50 - 0.05))
+        self.assertAlmostEqual(position[1], 0.5)
 
     def test_workspace_load_fully_restores_saved_display_settings(self):
         ext = make_extension()
@@ -2279,6 +2352,23 @@ class CaptureFlowTests(unittest.TestCase):
             self.assertEqual(restored._models["measurement_accuracy"].as_float, 0.003)
             self.assertTrue(restored._is_dirty)
             self.assertTrue(restored._state.can_redo)
+
+    def test_workspace_load_restores_parameter_pad_axes(self):
+        ext = make_extension()
+        install_detection_parameter_pad_models(ext)
+        ext._parameter_pad_axes = {"x": "seed_radius", "y": "measurement_accuracy"}
+
+        with TemporaryDirectory() as tmpdir:
+            path = str(Path(tmpdir) / "workspace.usda")
+
+            self.assertTrue(ext._save_workspace_to_path(path))
+
+            restored = make_extension()
+            install_detection_parameter_pad_models(restored)
+            restored._parameter_pad_axes = {"x": "mean_distance", "y": "measurement_accuracy"}
+            restored._load_workspace_from_path(path)
+
+            self.assertEqual(restored._parameter_pad_axes, {"x": "seed_radius", "y": "measurement_accuracy"})
 
     def test_export_geometries_writes_geometry_export_payload(self):
         ext = make_extension()
@@ -3772,6 +3862,7 @@ class CaptureFlowTests(unittest.TestCase):
 
     def test_toolbar_state_marks_selected_detection_and_projection(self):
         ext = make_extension()
+        ext._toolbar_inspect_button = Button()
         ext._toolbar_detection_buttons = {name: Button() for name in detection.DETECTION_TYPES}
         ext._toolbar_projection_buttons = {
             extension.PROJECTION_ORTHOGRAPHIC: Button(),
@@ -3783,8 +3874,40 @@ class CaptureFlowTests(unittest.TestCase):
 
         self.assertTrue(ext._toolbar_detection_buttons["Sphere"].selected)
         self.assertFalse(ext._toolbar_detection_buttons["Plane"].selected)
+        self.assertFalse(ext._toolbar_inspect_button.selected)
         self.assertTrue(ext._toolbar_projection_buttons[extension.PROJECTION_PERSPECTIVE].selected)
         self.assertFalse(ext._toolbar_projection_buttons[extension.PROJECTION_ORTHOGRAPHIC].selected)
+
+    def test_inspect_toolbar_mode_disables_detection_buttons_and_picking(self):
+        ext = make_extension()
+        ext._toolbar_inspect_button = Button()
+        ext._toolbar_detection_buttons = {name: Button() for name in detection.DETECTION_TYPES}
+        ext._auto_detect_result = surface_preview.SurfaceResult(
+            id="AutoHover_Plane_001",
+            type="Plane",
+            seed_position=(0.0, 0.0, 0.0),
+            seed_index=0,
+            inlier_indices=[0],
+            active_generation=ext._state.generation,
+        )
+        ext._auto_detect_source = "hover"
+        ext._viewport.surfaces = [ext._auto_detect_result]
+
+        ext._set_inspect_mode()
+        ext._update_once()
+
+        self.assertTrue(ext._detection_paused)
+        self.assertTrue(ext._toolbar_inspect_button.selected)
+        self.assertFalse(ext._toolbar_detection_buttons["Auto"].selected)
+        self.assertFalse(ext._viewport.picking_enabled)
+        self.assertIsNone(ext._auto_detect_result)
+        self.assertEqual(ext._viewport.surfaces, ext._state.results)
+
+        ext._set_detection_type("Sphere")
+
+        self.assertFalse(ext._detection_paused)
+        self.assertFalse(ext._toolbar_inspect_button.selected)
+        self.assertTrue(ext._toolbar_detection_buttons["Sphere"].selected)
 
     def test_tutorial_toolbar_button_is_disabled_while_overlay_visible(self):
         ext = make_extension()
@@ -5878,7 +6001,7 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertEqual(ext._hover_index, 2)
         self.assertEqual(requests, [])
 
-    def test_hover_preview_toggle_disables_hover_auto_detect_only(self):
+    def test_inspect_mode_disables_hover_and_selected_auto_detect(self):
         ext = make_extension()
         preview = surface_preview.SurfaceResult(
             id="AutoHover_Plane_001",
@@ -5891,7 +6014,7 @@ class CaptureFlowTests(unittest.TestCase):
         ext._selected_index = None
         ext._auto_detect_result = preview
         ext._auto_detect_source = "hover"
-        ext._models = {"auto_detect": types.SimpleNamespace(as_bool=False)}
+        ext._detection_paused = True
         ext._provider = types.SimpleNamespace()
         ext._read_options = lambda: detection.DetectionOptions()
         starts = []
@@ -5899,14 +6022,19 @@ class CaptureFlowTests(unittest.TestCase):
         ext._sync_detection_surfaces()
 
         ext._on_hover_changed(2)
+        ext._on_seed_selected(2)
 
         self.assertEqual(starts, [])
+        self.assertIsNone(ext._hover_index)
+        self.assertIsNone(ext._selected_index)
         self.assertIsNone(ext._auto_detect_result)
         self.assertIsNone(ext._auto_detect_source)
         self.assertEqual(ext._viewport.surfaces, [])
 
-    def test_selected_auto_detect_runs_when_hover_preview_toggle_is_off(self):
+    def test_legacy_hover_preview_setting_no_longer_disables_hover_detection(self):
         ext = make_extension()
+        ext._selected_index = None
+        ext._hover_index = 2
         ext._models = {
             "probe_radius": types.SimpleNamespace(as_float=6.0),
             "seed_radius": types.SimpleNamespace(as_float=0.15),
@@ -5923,8 +6051,8 @@ class CaptureFlowTests(unittest.TestCase):
         ext._on_detection_settings_changed("seed_radius")
 
         self.assertEqual(len(starts), 1)
-        self.assertEqual(starts[0][1], "selected")
-        self.assertEqual(starts[0][3], 1)
+        self.assertEqual(starts[0][1], "hover")
+        self.assertEqual(starts[0][3], 2)
 
     def test_alt_keyboard_events_toggle_retroactive_pick_marker(self):
         ext = make_extension()
@@ -6341,6 +6469,7 @@ class CaptureFlowTests(unittest.TestCase):
     def test_clear_ui_references_drops_widget_callbacks(self):
         ext = make_extension()
         ext._toolbar_detection_buttons = {"Plane": Button()}
+        ext._toolbar_inspect_button = Button()
         ext._toolbar_projection_buttons = {"ortho": Button()}
         ext._visibility_buttons = {"inliers": Button()}
         ext._geometry_collapsed = {"Plane_1": True}
@@ -6348,6 +6477,7 @@ class CaptureFlowTests(unittest.TestCase):
         ext._clear_ui_references()
 
         self.assertIsNone(ext._toolbar_undo_button)
+        self.assertIsNone(ext._toolbar_inspect_button)
         self.assertIsNone(ext._undo_button)
         self.assertIsNone(ext._redo_button)
         self.assertEqual(ext._toolbar_detection_buttons, {})
@@ -6364,15 +6494,17 @@ class CaptureFlowTests(unittest.TestCase):
                 released.append(id(self))
 
         save = Releasable()
+        inspect_button = Releasable()
         detection_button = Releasable()
         visibility_button = Releasable()
         ext._save_button = save
+        ext._toolbar_inspect_button = inspect_button
         ext._toolbar_detection_buttons = {"Plane": detection_button}
         ext._visibility_buttons = {"meshes": visibility_button}
 
         ext._clear_ui_references()
 
-        self.assertEqual(set(released), {id(save), id(detection_button), id(visibility_button)})
+        self.assertEqual(set(released), {id(save), id(inspect_button), id(detection_button), id(visibility_button)})
 
     def test_control_capture_shortcut_requires_capturable_preview(self):
         ext = make_extension()

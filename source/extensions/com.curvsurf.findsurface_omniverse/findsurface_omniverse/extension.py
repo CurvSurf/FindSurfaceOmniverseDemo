@@ -574,6 +574,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._geometries_last_scroll_y = None
         self._geometries_scroll_drag_active = False
         self._geometries_scroll_interaction_until = 0.0
+        self._toolbar_inspect_button = None
         self._toolbar_detection_buttons = {}
         self._toolbar_projection_buttons = {}
         self._visibility_buttons = {}
@@ -583,6 +584,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._hover_index = None
         self._selected_index = None
         self._detection_type = self._configured_detection_type()
+        self._detection_paused = False
         self._auto_detect_result = None
         self._auto_detect_source = None
         self._last_successful_auto_detect_result = None
@@ -713,7 +715,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             return {}
         directories = {}
         for key in FILE_DIALOG_DIRECTORY_KEYS:
-            directory = self._normalize_picker_directory(configured.get(key))
+            directory = self._resolve_extension_relative_directory(configured.get(key))
             if directory:
                 directories[key] = directory
         return directories
@@ -776,12 +778,33 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         directories[key] = directory
         config = getattr(self, "_app_config", None)
         if getattr(self, "_app_config_path", None) and isinstance(config, dict):
+            config_directory = self._portable_picker_directory_config_value(directory)
+            if config_directory is None:
+                return
             recent = config.get("recent_file_directories")
             if not isinstance(recent, dict):
                 recent = {}
                 config["recent_file_directories"] = recent
-            recent[key] = directory
+            recent[key] = config_directory
             self._write_app_config()
+
+    def _portable_picker_directory_config_value(self, directory):
+        directory = self._normalize_picker_directory(directory)
+        if not directory:
+            return None
+        if "://" in directory:
+            return directory
+        try:
+            directory_abs = os.path.abspath(directory)
+            root_abs = os.path.abspath(self._extension_root())
+            if os.path.commonpath([directory_abs, root_abs]) != root_abs:
+                return None
+            relative = os.path.relpath(directory_abs, root_abs)
+        except (OSError, ValueError):
+            return None
+        if relative == ".":
+            return "."
+        return os.path.normpath(relative).replace(os.sep, "/")
 
     def _write_app_config(self):
         config_path = getattr(self, "_app_config_path", None)
@@ -1207,6 +1230,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             "_selected_index_label",
             "_capture_button",
             "_toolbar_capture_button",
+            "_toolbar_inspect_button",
             "_tutorial_button",
             "_result_label",
             "_geometries_summary_label",
@@ -1247,6 +1271,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             getattr(self, "_save_button", None),
             getattr(self, "_capture_button", None),
             getattr(self, "_toolbar_capture_button", None),
+            getattr(self, "_toolbar_inspect_button", None),
             getattr(self, "_tutorial_button", None),
             getattr(self, "_undo_button", None),
             getattr(self, "_redo_button", None),
@@ -1484,8 +1509,9 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._apply_import_progress()
         self._apply_import_pending()
         viewport_blocked = self._is_modal_or_overlay_visible()
-        self._sync_viewport_picking_enabled(not viewport_blocked)
-        if not viewport_blocked:
+        detection_paused = self._is_detection_paused()
+        self._sync_viewport_picking_enabled(not viewport_blocked and not detection_paused)
+        if not viewport_blocked and not detection_paused:
             self._viewport.poll_hover_pick()
         else:
             self._clear_viewport_hover_pick()
@@ -2213,6 +2239,13 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                 image_size=self.TOOLBAR_LARGE_ICON_SIZE,
             )
             self._toolbar_separator()
+            self._toolbar_inspect_button = self._toolbar_icon_button(
+                "pointer.svg",
+                "Inspect geometries",
+                clicked_fn=self._set_inspect_mode,
+                image_size=self.TOOLBAR_LARGE_ICON_SIZE,
+            )
+            self._toolbar_gap()
             for detection_type in DETECTION_TYPES:
                 icon_name = f"detect_{detection_type.lower()}.svg"
                 shortcut = "Ctrl+`" if detection_type == "Auto" else f"Ctrl+{DETECTION_TYPES.index(detection_type)}"
@@ -2411,6 +2444,12 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             ui.Rectangle(width=1, height=self.TOOLBAR_SEPARATOR_LENGTH, style={"background_color": 0xFF4A4A4A})
             ui.Spacer(width=3)
 
+    def _toolbar_gap(self):
+        if self._is_toolbar_vertical():
+            ui.Spacer(height=10)
+        else:
+            ui.Spacer(width=10)
+
     def _visibility_button_text(self, label, visible):
         return f"{label} On" if visible else f"{label} Off"
 
@@ -2442,9 +2481,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if "probe_radius" not in self._models:
             self._models["probe_radius"] = ui.SimpleFloatModel(self._viewport.probe_radius_px)
         if "auto_detect" not in self._models:
-            self._models["auto_detect"] = ui.SimpleBoolModel(
-                app_config.config_bool(self._config(), ("detection", "auto_detect"), True)
-            )
+            self._models["auto_detect"] = ui.SimpleBoolModel(True)
         self._ensure_parameter_pad_axis_models()
         for name in self.RANGE_PARAMETER_DEFAULTS:
             self._subscribe_model(name, self._on_range_parameter_changed)
@@ -2473,7 +2510,6 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
         build_findsurface_window(
             FindSurfaceWindowModels(
-                auto_detect=self._models["auto_detect"],
                 lateral_extension=self._models["lateral_extension"],
                 radial_expansion=self._models["radial_expansion"],
             ),
@@ -5606,6 +5642,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                 continue
             if value is not None:
                 snapshot[name] = value
+        snapshot["parameter_pad_axes"] = self._parameter_pad_axes_settings_snapshot()
         snapshot["outlier_points_visible"] = bool(getattr(self._viewport, "outlier_points_visible", True))
         snapshot["surface_meshes_visible"] = bool(getattr(self._viewport, "surface_meshes_visible", True))
         snapshot["inlier_points_visible"] = bool(getattr(self._viewport, "inlier_points_visible", True))
@@ -5681,7 +5718,45 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._on_display_settings_changed()
         if "probe_radius" in self._models:
             self._on_detection_settings_changed()
+        self._apply_parameter_pad_axes_settings(settings.get("parameter_pad_axes"))
+        self._sync_parameter_pad_after_settings()
         self._sync_camera_models()
+
+    def _parameter_pad_axes_settings_snapshot(self):
+        axes = getattr(self, "_parameter_pad_axes", None)
+        if not isinstance(axes, dict):
+            axes = dict(self.PARAMETER_PAD_DEFAULT_AXES)
+        result = {}
+        for axis in ("x", "y"):
+            value = axes.get(axis)
+            if value in self.PARAMETER_PAD_PARAMETERS:
+                result[axis] = value
+        return result
+
+    def _apply_parameter_pad_axes_settings(self, axes):
+        if not isinstance(axes, dict):
+            return False
+        if not hasattr(self, "_parameter_pad_axes") or not isinstance(self._parameter_pad_axes, dict):
+            self._parameter_pad_axes = dict(self.PARAMETER_PAD_DEFAULT_AXES)
+        changed = False
+        for axis in ("x", "y"):
+            value = axes.get(axis)
+            if value not in self.PARAMETER_PAD_PARAMETERS:
+                continue
+            if self._parameter_pad_axes.get(axis) != value:
+                self._parameter_pad_axes[axis] = value
+                changed = True
+        self._ensure_distinct_parameter_pad_axes()
+        for axis in ("x", "y"):
+            self._sync_parameter_pad_axis_model(axis)
+        return changed
+
+    def _sync_parameter_pad_after_settings(self):
+        self._active_parameter_pad = None
+        if hasattr(self, "_parameter_pad_positions"):
+            self._parameter_pad_positions.clear()
+        self._sync_parameter_pad_handle_from_models()
+        self._queue_parameter_pad_row_refresh()
 
     def _is_legacy_boolean_numeric_setting(self, name, value):
         if name in self.SETTINGS_BOOL_MODEL_NAMES:
@@ -6826,15 +6901,43 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             if not transaction:
                 self._apply_dirty_scope("content")
 
+    def _is_detection_paused(self):
+        return bool(getattr(self, "_detection_paused", False))
+
+    def _set_inspect_mode(self):
+        if self._is_detection_paused():
+            return
+        self._sync_parameter_transaction_from_models(finalize=True)
+        self._finalize_pending_parameter_change()
+        self._detection_paused = True
+        self._selected_index = None
+        self._clear_viewport_hover_pick()
+        if getattr(self, "_viewport", None):
+            self._viewport.set_pick_markers(None, None)
+        self._clear_auto_detect_preview()
+        self._sync_detection_surfaces()
+        self._refresh_detection_panel()
+        self._refresh_toolbar_state()
+        self._set_status("Detection paused: inspecting geometries")
+
+    def _resume_detection(self):
+        if not self._is_detection_paused():
+            return False
+        self._detection_paused = False
+        self._sync_viewport_picking_enabled(not self._is_modal_or_overlay_visible())
+        return True
+
     def _set_detection_type(self, detection_type):
-        if detection_type == self._detection_type:
+        was_paused = self._resume_detection()
+        if detection_type == self._detection_type and not was_paused:
             return
         self._sync_parameter_transaction_from_models(finalize=True)
         self._finalize_pending_parameter_change()
         state_before = self._parameter_transaction_state()
-        self._detection_type = detection_type
+        if detection_type != self._detection_type:
+            self._detection_type = detection_type
+            self._record_parameter_change("detection_type", state_before=state_before)
         self._set_status(f"Detection type: {detection_type}")
-        self._record_parameter_change("detection_type", state_before=state_before)
         self._refresh_toolbar_state()
         self._request_auto_detect()
 
@@ -6989,12 +7092,11 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         return f"{float(value):.4f}"
 
     def _is_auto_detect_enabled(self):
-        model = self._models.get("auto_detect")
-        if model is None:
-            return True
-        return bool(model and model.as_bool)
+        return not self._is_detection_paused()
 
     def _is_auto_detect_source_enabled(self, source):
+        if self._is_detection_paused():
+            return False
         if source == "hover":
             return self._is_auto_detect_enabled()
         return source == "selected"
@@ -7055,6 +7157,11 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         return False
 
     def _on_hover_changed(self, index):
+        if self._is_detection_paused():
+            self._hover_index = None
+            self._clear_auto_detect_preview()
+            self._refresh_detection_panel()
+            return
         self._hover_index = index
         self._refresh_detection_panel()
         if self._selected_index is not None and self._is_active_index(self._selected_index):
@@ -7062,11 +7169,17 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._request_auto_detect()
 
     def _on_seed_selected(self, index):
+        if self._is_detection_paused():
+            self._clear_auto_detect_preview()
+            return
         self._selected_index = index
         self._refresh_detection_panel()
         self._request_auto_detect()
 
     def _pick_center_seed(self):
+        if self._is_detection_paused():
+            self._set_status("Choose a detection type before picking a seed.")
+            return
         if not self._state:
             self._set_status("Import a point cloud before picking a seed.")
             return
@@ -7098,6 +7211,9 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
     def _request_auto_detect(self):
         if getattr(self, "_app_shutting_down", False):
+            return
+        if self._is_detection_paused():
+            self._clear_auto_detect_preview()
             return
         if not self._state:
             self._clear_auto_detect_preview()
@@ -7938,6 +8054,8 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._viewport.set_surfaces(surfaces)
 
     def _is_displayable_auto_detect_result(self, result):
+        if self._is_detection_paused():
+            return False
         if not self._state or result is None:
             return False
         if getattr(result, "active_generation", None) != self._state.generation:
@@ -8915,8 +9033,10 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         projection = getattr(camera, "projection_mode", PROJECTION_ORTHOGRAPHIC)
         for mode, button in getattr(self, "_toolbar_projection_buttons", {}).items():
             self._set_button_selected(button, mode == projection)
+        if getattr(self, "_toolbar_inspect_button", None):
+            self._set_button_selected(self._toolbar_inspect_button, self._is_detection_paused())
         for detection_type, button in getattr(self, "_toolbar_detection_buttons", {}).items():
-            self._set_button_selected(button, detection_type == self._detection_type)
+            self._set_button_selected(button, not self._is_detection_paused() and detection_type == self._detection_type)
         viewport = getattr(self, "_viewport", None)
         visibility = {
             "outliers": getattr(viewport, "outlier_points_visible", True),
