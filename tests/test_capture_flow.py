@@ -463,6 +463,7 @@ def make_extension():
     ext._shutdown_observers = []
     ext._update_task = None
     ext._dock_task = None
+    ext._layout_restore_tasks = []
     ext._geometry_refresh_task = None
     ext._transactions_refresh_task = None
     ext._findsurface_refresh_task = None
@@ -515,6 +516,7 @@ def make_extension():
     ext._point_limit_dialog = None
     ext._unsaved_changes_dialog = None
     ext._geometry_action_dialog = None
+    ext._native_sdk_dialog = None
     ext._sample_target_model = None
     ext._pending_oversized_import_path = None
     ext._pending_oversized_import_error = None
@@ -541,6 +543,9 @@ def make_extension():
     ext._windows = {}
     ext._menu_items = {}
     ext._registered_actions = []
+    ext._window_visibility_changed_callback_id = None
+    ext._window_layout_state = {}
+    ext._pending_layout_restore_titles = set()
     ext._keyboard = None
     ext._keyboard_input = None
     ext._keyboard_subscription = None
@@ -3936,7 +3941,7 @@ class CaptureFlowTests(unittest.TestCase):
             else:
                 extension.ui.DockPosition = previous_dock_position
 
-    def test_showing_transactions_redocks_it_as_side_panel_tab(self):
+    def test_showing_transactions_preserves_existing_dock_layout(self):
         ext = make_extension()
         previous_dock_position = getattr(extension.ui, "DockPosition", None)
         extension.ui.DockPosition = types.SimpleNamespace(SAME="same")
@@ -3958,12 +3963,12 @@ class CaptureFlowTests(unittest.TestCase):
                 extension.FindSurfaceBootstrapExtension.WINDOW_FINDSURFACE: Window("FindSurface"),
                 extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS: Window("Transactions", visible=False),
             }
-            ext._queue_side_panel_tab_dock = lambda title: calls.append(("queue", title))
+            ext._queue_window_layout_restore = lambda title: calls.append(("queue", title))
 
             ext._toggle_window(extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS)
 
             self.assertTrue(ext._windows[extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS].visible)
-            self.assertIn(("dock", "Transactions", "FindSurface", "same", 0.5), calls)
+            self.assertNotIn(("dock", "Transactions", "FindSurface", "same", 0.5), calls)
             self.assertIn(("focus", "Transactions"), calls)
             self.assertIn(("queue", extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS), calls)
         finally:
@@ -4002,6 +4007,243 @@ class CaptureFlowTests(unittest.TestCase):
                 delattr(extension.ui, "DockPosition")
             else:
                 extension.ui.DockPosition = previous_dock_position
+
+    def test_showing_side_panel_tab_does_not_redock_user_layout(self):
+        ext = make_extension()
+        previous_dock_position = getattr(extension.ui, "DockPosition", None)
+        extension.ui.DockPosition = types.SimpleNamespace(SAME="same")
+        calls = []
+
+        class Window:
+            def __init__(self, name, visible=True):
+                self.name = name
+                self.visible = visible
+
+            def dock_in(self, target, position, ratio):
+                calls.append(("dock", self.name, getattr(target, "name", None), position, ratio, self.visible))
+
+            def focus(self):
+                calls.append(("focus", self.name))
+
+        try:
+            ext._windows = {
+                extension.FindSurfaceBootstrapExtension.WINDOW_FINDSURFACE: Window("FindSurface"),
+                extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES: Window("Geometries"),
+                extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA: Window("Camera", visible=False),
+                extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS: Window("Settings"),
+                extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS: Window("Transactions", visible=False),
+            }
+            ext._menu_items = {"Window": []}
+            ext._refresh_menu_items = lambda menu_name: None
+            ext._queue_window_layout_restore = lambda title: calls.append(("queue", title))
+
+            ext._toggle_window(extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA)
+
+            docked_names = [call[1] for call in calls if call[0] == "dock"]
+            self.assertEqual(docked_names, [])
+            self.assertTrue(ext._windows[extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA].visible)
+            self.assertFalse(ext._windows[extension.FindSurfaceBootstrapExtension.WINDOW_TRANSACTIONS].visible)
+            self.assertIn(("focus", "Camera"), calls)
+            self.assertIn(("queue", extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA), calls)
+        finally:
+            if previous_dock_position is None:
+                delattr(extension.ui, "DockPosition")
+            else:
+                extension.ui.DockPosition = previous_dock_position
+
+    def test_showing_side_panel_tab_restores_saved_dock_order(self):
+        ext = make_extension()
+        calls = []
+
+        class Window:
+            def __init__(self, name, visible=True, dock_order=0):
+                self.name = name
+                self.visible = visible
+                self.docked = True
+                self.dock_id = 7
+                self.dock_order = dock_order
+                self.position_x = 10
+                self.position_y = 20
+                self.width = 300
+                self.height = 400
+
+            def focus(self):
+                calls.append(("focus", self.name))
+
+        camera = Window("Camera", visible=False, dock_order=4)
+        ext._windows = {extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA: camera}
+        ext._menu_items = {"Window": []}
+        ext._refresh_menu_items = lambda menu_name: None
+        ext._queue_window_layout_restore = lambda title: calls.append(("queue", title))
+        ext._window_layout_state = {
+            extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA: {
+                "docked": True,
+                "dock_id": 7,
+                "dock_order": 1,
+                "position_x": 30,
+                "position_y": 40,
+                "width": 350,
+                "height": 450,
+            }
+        }
+
+        ext._toggle_window(extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA)
+
+        self.assertTrue(camera.visible)
+        self.assertEqual(camera.dock_order, 1)
+        self.assertEqual((camera.position_x, camera.position_y, camera.width, camera.height), (10, 20, 300, 400))
+        self.assertIn(("focus", "Camera"), calls)
+        self.assertIn(("queue", extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA), calls)
+
+    def test_showing_undocked_window_restores_floating_state(self):
+        ext = make_extension()
+        calls = []
+
+        class Window:
+            def __init__(self):
+                self.visible = False
+                self.docked = True
+                self.dock_order = 2
+                self.position_x = 0
+                self.position_y = 0
+                self.width = 100
+                self.height = 100
+
+            def undock(self):
+                calls.append(("undock",))
+                self.docked = False
+
+            def focus(self):
+                calls.append(("focus",))
+
+        window = Window()
+        ext._windows = {extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS: window}
+        ext._menu_items = {"Window": []}
+        ext._refresh_menu_items = lambda menu_name: None
+        ext._queue_window_layout_restore = lambda title: calls.append(("queue", title))
+        ext._window_layout_state = {
+            extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS: {
+                "docked": False,
+                "dock_order": None,
+                "position_x": 77,
+                "position_y": 88,
+                "width": 321,
+                "height": 432,
+            }
+        }
+
+        ext._toggle_window(extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS)
+
+        self.assertFalse(window.docked)
+        self.assertEqual((window.position_x, window.position_y, window.width, window.height), (77, 88, 321, 432))
+        self.assertIn(("undock",), calls)
+        self.assertIn(("focus",), calls)
+        self.assertIn(("queue", extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS), calls)
+
+    def test_capture_window_layout_state_ignores_hidden_window(self):
+        ext = make_extension()
+
+        class Window:
+            visible = False
+            docked = True
+            dock_id = 3
+            dock_order = 9
+            position_x = 1
+            position_y = 2
+            width = 3
+            height = 4
+
+        title = extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES
+        ext._windows = {title: Window()}
+        ext._window_layout_state = {title: {"dock_order": 1}}
+
+        self.assertFalse(ext._capture_window_layout_state(title))
+        self.assertEqual(ext._window_layout_state[title], {"dock_order": 1})
+
+    def test_capture_window_layout_state_ignores_pending_restore_window(self):
+        ext = make_extension()
+        title = extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA
+        ext._windows = {
+            title: types.SimpleNamespace(
+                visible=True,
+                docked=True,
+                dock_id=3,
+                dock_order=9,
+                position_x=1,
+                position_y=2,
+                width=3,
+                height=4,
+            )
+        }
+        ext._window_layout_state = {title: {"dock_order": 1}}
+        ext._pending_layout_restore_titles = {title}
+
+        self.assertFalse(ext._capture_window_layout_state(title))
+        self.assertEqual(ext._window_layout_state[title], {"dock_order": 1})
+
+    def test_capture_window_layout_state_records_dock_order_only(self):
+        ext = make_extension()
+        title = extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES
+        ext._windows = {
+            title: types.SimpleNamespace(
+                visible=True,
+                docked=True,
+                dock_id=3,
+                dock_order=2,
+                position_x=1,
+                position_y=2,
+                width=300,
+                height=400,
+            )
+        }
+
+        self.assertTrue(ext._capture_window_layout_state(title))
+
+        self.assertNotIn("workspace_layout", ext._window_layout_state[title])
+        self.assertEqual(ext._window_layout_state[title]["dock_order"], 2)
+
+    def test_restore_window_layout_state_clamps_dock_order_to_right_edge(self):
+        ext = make_extension()
+        title = extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA
+        window = types.SimpleNamespace(visible=True, docked=True, dock_id=4, dock_order=8)
+        ext._windows = {title: window}
+        ext._window_layout_state = {
+            title: {
+                "docked": True,
+                "dock_order": 10,
+            }
+        }
+        original_workspace = getattr(extension.ui, "Workspace", None)
+        try:
+            extension.ui.Workspace = types.SimpleNamespace(
+                get_docked_windows=lambda dock_id: [object(), object(), object()]
+            )
+
+            self.assertTrue(ext._restore_window_layout_state(title))
+
+            self.assertEqual(window.dock_order, 2)
+        finally:
+            if original_workspace is None:
+                delattr(extension.ui, "Workspace")
+            else:
+                extension.ui.Workspace = original_workspace
+
+    def test_restore_window_layout_state_does_not_touch_other_windows(self):
+        ext = make_extension()
+        title = extension.FindSurfaceBootstrapExtension.WINDOW_CAMERA
+        other = types.SimpleNamespace(docked=False, dock_order=99)
+        window = types.SimpleNamespace(visible=True, docked=True, dock_id=4, dock_order=8)
+        ext._windows = {
+            title: window,
+            extension.FindSurfaceBootstrapExtension.WINDOW_SETTINGS: other,
+        }
+        ext._window_layout_state = {title: {"docked": True, "dock_order": 1}}
+
+        self.assertTrue(ext._restore_window_layout_state(title))
+
+        self.assertEqual(window.dock_order, 1)
+        self.assertFalse(other.docked)
+        self.assertEqual(other.dock_order, 99)
 
     def test_global_visibility_toggle_updates_viewport_and_dirty_state(self):
         ext = make_extension()
@@ -6005,6 +6247,49 @@ class CaptureFlowTests(unittest.TestCase):
             ["FindSurface", "Geometries", "Camera", "Settings", "Transactions"],
         )
         self.assertIn("Edit", ext._menu_items)
+
+    def test_window_visibility_callback_updates_window_menu_tick(self):
+        ext = make_extension()
+        menu_item = types.SimpleNamespace(name=extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES, ticked=True)
+        ext._windows = {extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES: types.SimpleNamespace(visible=False)}
+        ext._menu_items = {"Window": [menu_item]}
+        calls = []
+        original_refresh = getattr(extension.omni.kit.menu.utils, "refresh_menu_items", None)
+        try:
+            extension.omni.kit.menu.utils.refresh_menu_items = lambda menu_name: calls.append(menu_name)
+
+            ext._on_window_visibility_changed(extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES, False)
+
+            self.assertFalse(menu_item.ticked)
+            self.assertEqual(calls, ["Window"])
+        finally:
+            if original_refresh is None:
+                delattr(extension.omni.kit.menu.utils, "refresh_menu_items")
+            else:
+                extension.omni.kit.menu.utils.refresh_menu_items = original_refresh
+
+    def test_clear_workspace_window_callbacks_removes_visibility_callback(self):
+        ext = make_extension()
+        ext._window_visibility_changed_callback_id = 42
+        ext._windows = {extension.FindSurfaceBootstrapExtension.WINDOW_VIEWPORT: types.SimpleNamespace()}
+        calls = []
+        original_workspace = getattr(extension.ui, "Workspace", None)
+        try:
+            extension.ui.Workspace = types.SimpleNamespace(
+                remove_window_visibility_changed_callback=lambda callback_id: calls.append(("remove", callback_id)),
+                set_show_window_fn=lambda title, value: calls.append(("show_fn", title, value)),
+            )
+
+            ext._clear_workspace_window_callbacks()
+
+            self.assertIsNone(ext._window_visibility_changed_callback_id)
+            self.assertIn(("remove", 42), calls)
+            self.assertIn(("show_fn", extension.FindSurfaceBootstrapExtension.WINDOW_VIEWPORT, None), calls)
+        finally:
+            if original_workspace is None:
+                delattr(extension.ui, "Workspace")
+            else:
+                extension.ui.Workspace = original_workspace
 
     def test_transaction_state_change_queues_window_refresh(self):
         ext = make_extension()

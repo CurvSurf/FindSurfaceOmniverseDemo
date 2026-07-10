@@ -126,6 +126,32 @@ async def _run_update_loop(extension_ref):
             extension = None
 
 
+async def _restore_window_layout_after_update(extension_ref, title):
+    try:
+        for _ in range(2):
+            await omni.kit.app.get_app().next_update_async()
+            extension = _live_extension(extension_ref)
+            if extension is None:
+                return
+            extension = None
+
+        extension = _live_extension(extension_ref)
+        if extension is None or not extension._is_window_visible(title):
+            return
+        extension._restore_window_layout_state(title)
+        extension._focus_window(extension._windows.get(title))
+        extension = None
+    except asyncio.CancelledError:
+        raise
+    finally:
+        extension = _live_extension(extension_ref)
+        if extension is not None:
+            getattr(extension, "_pending_layout_restore_titles", set()).discard(title)
+            extension._layout_restore_tasks = [
+                task for task in getattr(extension, "_layout_restore_tasks", []) if not task.done()
+            ]
+
+
 async def _dock_windows_after_update(extension_ref):
     try:
         for _ in range(3):
@@ -229,24 +255,6 @@ async def _refresh_parameter_pad_row_after_update(extension_ref):
         if extension is not None:
             extension._parameter_pad_refresh_task = None
         extension = None
-
-
-async def _dock_side_panel_tab_after_update(extension_ref, title):
-    try:
-        for _ in range(2):
-            await omni.kit.app.get_app().next_update_async()
-            extension = _live_extension(extension_ref)
-            if extension is None:
-                return
-            extension = None
-
-        extension = _live_extension(extension_ref)
-        if extension is None or not extension._is_window_visible(title):
-            return
-        extension._dock_side_panel_tab(title, focus=True, restore_visible=True)
-        extension = None
-    except asyncio.CancelledError:
-        raise
 
 
 class _ToolbarIconButton:
@@ -483,6 +491,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._workspace_path = None
         self._dock_task = None
         self._update_task = None
+        self._layout_restore_tasks = []
         self._geometry_refresh_task = None
         self._transactions_refresh_task = None
         self._findsurface_refresh_task = None
@@ -619,6 +628,9 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._windows = {}
         self._menu_items = {}
         self._registered_actions = []
+        self._window_visibility_changed_callback_id = None
+        self._window_layout_state = {}
+        self._pending_layout_restore_titles = set()
         self._keyboard = None
         self._keyboard_input = None
         self._keyboard_subscription = None
@@ -850,6 +862,10 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if self._dock_task:
             self._dock_task.cancel()
             self._dock_task = None
+        for task in getattr(self, "_layout_restore_tasks", []):
+            task.cancel()
+        self._layout_restore_tasks = []
+        self._pending_layout_restore_titles = set()
         if self._geometry_refresh_task:
             self._geometry_refresh_task.cancel()
             self._geometry_refresh_task = None
@@ -965,6 +981,17 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._registered_actions.clear()
 
     def _clear_workspace_window_callbacks(self):
+        workspace = getattr(ui, "Workspace", None)
+        callback_id = getattr(self, "_window_visibility_changed_callback_id", None)
+        if callback_id:
+            remove_callback = getattr(workspace, "remove_window_visibility_changed_callback", None)
+            if callable(remove_callback):
+                try:
+                    remove_callback(callback_id)
+                except Exception as exc:
+                    carb.log_warn(f"FindSurface workspace visibility callback cleanup failed: {exc}")
+        self._window_visibility_changed_callback_id = None
+
         for title in list(self._windows.keys()):
             try:
                 ui.Workspace.set_show_window_fn(title, None)
@@ -1464,6 +1491,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._clear_viewport_hover_pick()
         self._apply_auto_detect_pending()
         self._expire_auto_detect_preview()
+        self._capture_window_layout_state()
 
     def _register_actions(self):
         registry = omni.kit.actions.core.get_action_registry()
@@ -2047,9 +2075,20 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
         for title in self._windows:
             ui.Workspace.set_show_window_fn(title, lambda visible, window_title=title: self._show_window(window_title, visible))
+        self._register_window_visibility_changed_callback()
         self._refresh_detection_panel()
         self._refresh_toolbar_state()
         self._refresh_window_title()
+
+    def _register_window_visibility_changed_callback(self):
+        workspace = getattr(ui, "Workspace", None)
+        register = getattr(workspace, "set_window_visibility_changed_callback", None)
+        if not callable(register) or self._window_visibility_changed_callback_id is not None:
+            return
+        try:
+            self._window_visibility_changed_callback_id = register(self._on_window_visibility_changed)
+        except Exception as exc:
+            carb.log_warn(f"FindSurface window visibility callback registration failed: {exc}")
 
     def _set_window_minimum_size(self, window, min_width, min_height=None):
         if window is None:
@@ -5291,17 +5330,6 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if focus:
             self._focus_window(window)
         return True
-
-    def _queue_side_panel_tab_dock(self, title):
-        if getattr(self, "_app_shutting_down", False):
-            return False
-        if title not in self._side_panel_tab_titles():
-            return False
-        try:
-            asyncio.ensure_future(_dock_side_panel_tab_after_update(weakref.ref(self), title))
-            return True
-        except Exception:
-            return False
 
     def _hide_toolbar_tab_bars(self):
         toolbar = self._windows.get(self.WINDOW_TOOLBAR)
@@ -8682,14 +8710,146 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._point_count_label.text = f"{count:,} points"
         self._refresh_viewport_overlays()
 
+    def _on_window_visibility_changed(self, title, visible):
+        if title not in self._windows:
+            return
+        self._sync_window_menu_item(title, visible)
+        if title == self.WINDOW_TUTORIAL:
+            self._refresh_toolbar_state()
+
+    def _capture_window_layout_state(self, title=None):
+        titles = (title,) if title else tuple(getattr(self, "_windows", {}).keys())
+        captured = False
+        for window_title in titles:
+            if window_title in getattr(self, "_pending_layout_restore_titles", set()):
+                continue
+            window = self._windows.get(window_title)
+            if not window or not bool(getattr(window, "visible", False)):
+                continue
+            try:
+                state = {
+                    "docked": bool(getattr(window, "docked", False)),
+                    "dock_id": getattr(window, "dock_id", None),
+                    "dock_order": getattr(window, "dock_order", None),
+                    "position_x": getattr(window, "position_x", None),
+                    "position_y": getattr(window, "position_y", None),
+                    "width": getattr(window, "width", None),
+                    "height": getattr(window, "height", None),
+                }
+            except Exception:
+                continue
+            self._window_layout_state[window_title] = state
+            captured = True
+        return captured
+
+    def _restore_window_layout_state(self, title):
+        window = self._windows.get(title)
+        state = self._window_layout_state.get(title)
+        if not window or not state:
+            return False
+        restored = False
+        try:
+            was_docked = bool(state.get("docked"))
+            is_docked = bool(getattr(window, "docked", False))
+            if was_docked and is_docked and state.get("dock_order") is not None:
+                window.dock_order = self._dock_order_to_restore(window, state.get("dock_order"))
+                restored = True
+            elif not was_docked and is_docked:
+                undock = getattr(window, "undock", None)
+                if callable(undock):
+                    undock()
+                    restored = True
+        except Exception as exc:
+            carb.log_warn(f"FindSurface window layout restore failed for {title}: {exc}")
+
+        if not bool(state.get("docked")) or not bool(getattr(window, "docked", False)):
+            for attr_name in ("position_x", "position_y", "width", "height"):
+                value = state.get(attr_name)
+                if value is None:
+                    continue
+                try:
+                    setattr(window, attr_name, value)
+                    restored = True
+                except Exception:
+                    pass
+        return restored
+
+    def _dock_order_to_restore(self, window, saved_order):
+        try:
+            order = int(saved_order)
+        except Exception:
+            return saved_order
+        order = max(0, order)
+        workspace = getattr(ui, "Workspace", None)
+        get_docked_windows = getattr(workspace, "get_docked_windows", None)
+        if not callable(get_docked_windows):
+            return order
+        try:
+            dock_id = getattr(window, "dock_id", None)
+            docked_windows = get_docked_windows(dock_id) if dock_id is not None else None
+        except Exception:
+            docked_windows = None
+        try:
+            docked_count = len(docked_windows)
+        except Exception:
+            docked_count = 0
+        if docked_count <= 0:
+            return order
+        return min(order, docked_count - 1)
+
+    def _queue_window_layout_restore(self, title):
+        if getattr(self, "_app_shutting_down", False) or title not in self._windows:
+            return False
+        try:
+            self._layout_restore_tasks = [
+                task for task in getattr(self, "_layout_restore_tasks", []) if not task.done()
+            ]
+            self._pending_layout_restore_titles.add(title)
+            task = asyncio.ensure_future(_restore_window_layout_after_update(weakref.ref(self), title))
+            self._layout_restore_tasks.append(task)
+            return True
+        except Exception:
+            return False
+
+    def _sync_window_menu_item(self, title, visible):
+        for item in self._menu_items.get("Window", []):
+            if getattr(item, "name", None) == title:
+                try:
+                    item.ticked = bool(visible)
+                except Exception:
+                    pass
+                break
+        self._refresh_menu_items("Window")
+
+    def _refresh_menu_items(self, menu_name):
+        menu_utils = omni.kit.menu.utils
+        for method_name in ("refresh_menu_items", "refresh_menu", "rebuild_menus", "rebuild_menu"):
+            method = getattr(menu_utils, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                method(menu_name)
+            except TypeError:
+                try:
+                    method()
+                except Exception:
+                    continue
+            except Exception:
+                continue
+            return
+
     def _toggle_window(self, title):
         window = self._windows.get(title)
         if window:
             visible = not window.visible
+            if not visible:
+                self._capture_window_layout_state(title)
             window.visible = visible
+            self._sync_window_menu_item(title, visible)
             if visible:
-                self._dock_side_panel_tab(title, focus=True, restore_visible=True)
-                self._queue_side_panel_tab_dock(title)
+                self._restore_window_layout_state(title)
+                self._queue_window_layout_restore(title)
+                self._focus_window(window)
         if title == self.WINDOW_TUTORIAL:
             self._refresh_toolbar_state()
 
@@ -8805,10 +8965,14 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
     def _show_window(self, title, visible):
         window = self._windows.get(title)
         if window:
+            if not visible:
+                self._capture_window_layout_state(title)
             window.visible = visible
+            self._sync_window_menu_item(title, visible)
             if visible:
-                self._dock_side_panel_tab(title, focus=True, restore_visible=True)
-                self._queue_side_panel_tab_dock(title)
+                self._restore_window_layout_state(title)
+                self._queue_window_layout_restore(title)
+                self._focus_window(window)
         if title == self.WINDOW_TUTORIAL:
             self._refresh_toolbar_state()
 
