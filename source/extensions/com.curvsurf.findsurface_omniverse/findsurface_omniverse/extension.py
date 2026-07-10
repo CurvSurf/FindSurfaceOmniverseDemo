@@ -992,7 +992,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                     carb.log_warn(f"FindSurface workspace visibility callback cleanup failed: {exc}")
         self._window_visibility_changed_callback_id = None
 
-        for title in list(self._windows.keys()):
+        for title in list(getattr(self, "_windows", {}).keys()):
             try:
                 ui.Workspace.set_show_window_fn(title, None)
             except Exception as exc:
@@ -8711,7 +8711,10 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._refresh_viewport_overlays()
 
     def _on_window_visibility_changed(self, title, visible):
-        if title not in self._windows:
+        if getattr(self, "_app_shutting_down", False):
+            return
+        windows = getattr(self, "_windows", None)
+        if not windows or title not in windows:
             return
         self._sync_window_menu_item(title, visible)
         if title == self.WINDOW_TUTORIAL:

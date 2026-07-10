@@ -6268,6 +6268,19 @@ class CaptureFlowTests(unittest.TestCase):
             else:
                 extension.omni.kit.menu.utils.refresh_menu_items = original_refresh
 
+    def test_window_visibility_callback_ignores_shutdown_without_windows(self):
+        ext = make_extension()
+        ext._app_shutting_down = True
+        del ext._windows
+
+        ext._on_window_visibility_changed(extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES, False)
+
+    def test_window_visibility_callback_ignores_missing_windows(self):
+        ext = make_extension()
+        del ext._windows
+
+        ext._on_window_visibility_changed(extension.FindSurfaceBootstrapExtension.WINDOW_GEOMETRIES, False)
+
     def test_clear_workspace_window_callbacks_removes_visibility_callback(self):
         ext = make_extension()
         ext._window_visibility_changed_callback_id = 42
@@ -6290,6 +6303,13 @@ class CaptureFlowTests(unittest.TestCase):
                 delattr(extension.ui, "Workspace")
             else:
                 extension.ui.Workspace = original_workspace
+
+    def test_clear_workspace_window_callbacks_allows_missing_windows(self):
+        ext = make_extension()
+        ext._window_visibility_changed_callback_id = None
+        del ext._windows
+
+        ext._clear_workspace_window_callbacks()
 
     def test_transaction_state_change_queues_window_refresh(self):
         ext = make_extension()
