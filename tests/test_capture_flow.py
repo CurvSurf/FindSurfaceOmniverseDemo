@@ -4896,8 +4896,10 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertTrue(overlay["visible"])
         self.assertEqual(overlay["result_type"], "Sphere")
         self.assertTrue(overlay["icon_path"].endswith("detect_sphere.svg"))
-        self.assertIn(("Seed Index", "1"), overlay["rows"])
-        self.assertIn(("Inliers", "2 pts"), overlay["rows"])
+        self.assertEqual(
+            overlay["rows"][:3],
+            [("Seed Index", "1"), ("Inliers", "2 pts"), ("RMS", "1.2e-03")],
+        )
         self.assertNotIn("Axis", dict(overlay["rows"]))
         self.assertNotIn("Normal", dict(overlay["rows"]))
         self.assertIsNotNone(overlay["histogram"])

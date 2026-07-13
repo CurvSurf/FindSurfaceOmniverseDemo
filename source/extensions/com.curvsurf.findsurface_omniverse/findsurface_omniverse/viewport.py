@@ -93,6 +93,9 @@ DATA_OVERLAY_HEIGHT = 74
 DATA_OVERLAY_TEXT_PADDING = 12
 HOVER_DETECTION_OVERLAY_WIDTH = 310
 HOVER_DETECTION_OVERLAY_HEIGHT = 196
+HOVER_DETECTION_OVERLAY_BASE_ROWS = 5
+HOVER_DETECTION_OVERLAY_ROW_HEIGHT = 18
+HOVER_DETECTION_OVERLAY_MAX_HEIGHT = HOVER_DETECTION_OVERLAY_HEIGHT + HOVER_DETECTION_OVERLAY_ROW_HEIGHT
 HOVER_DETECTION_ICON_SIZE = 24
 HOVER_DETECTION_HISTOGRAM_WIDTH = 286
 HOVER_DETECTION_HISTOGRAM_HEIGHT = 48
@@ -1144,15 +1147,17 @@ class PointCloudViewport:
         frame_factory = getattr(ui, "Frame", None)
         with ui.VStack():
             ui.Spacer()
-            with ui.HStack(height=HOVER_DETECTION_OVERLAY_HEIGHT + VIEWPORT_OVERLAY_MARGIN):
+            with ui.HStack(height=HOVER_DETECTION_OVERLAY_MAX_HEIGHT + VIEWPORT_OVERLAY_MARGIN):
                 ui.Spacer()
-                if frame_factory:
-                    self._hover_detection_overlay_frame = frame_factory(
-                        width=HOVER_DETECTION_OVERLAY_WIDTH,
-                        height=HOVER_DETECTION_OVERLAY_HEIGHT,
-                    )
-                else:
-                    self._hover_detection_overlay_frame = None
+                with ui.VStack(width=HOVER_DETECTION_OVERLAY_WIDTH, height=HOVER_DETECTION_OVERLAY_MAX_HEIGHT):
+                    ui.Spacer()
+                    if frame_factory:
+                        self._hover_detection_overlay_frame = frame_factory(
+                            width=HOVER_DETECTION_OVERLAY_WIDTH,
+                            height=HOVER_DETECTION_OVERLAY_HEIGHT,
+                        )
+                    else:
+                        self._hover_detection_overlay_frame = None
                 ui.Spacer(width=VIEWPORT_OVERLAY_MARGIN)
             ui.Spacer(height=VIEWPORT_OVERLAY_MARGIN)
         self._refresh_hover_detection_overlay()
@@ -1164,6 +1169,10 @@ class PointCloudViewport:
         state = getattr(self, "_hover_detection_overlay_state", None) or {}
         visible = bool(state.get("visible"))
         self._set_widget_visible(frame, visible)
+        try:
+            frame.height = self._hover_detection_overlay_height(state)
+        except Exception:
+            pass
         if hasattr(frame, "clear"):
             try:
                 frame.clear()
@@ -1181,17 +1190,18 @@ class PointCloudViewport:
 
     def _build_hover_detection_overlay_body(self, state):
         rectangle = getattr(ui, "Rectangle", None)
-        with ui.ZStack(width=HOVER_DETECTION_OVERLAY_WIDTH, height=HOVER_DETECTION_OVERLAY_HEIGHT):
+        overlay_height = self._hover_detection_overlay_height(state)
+        with ui.ZStack(width=HOVER_DETECTION_OVERLAY_WIDTH, height=overlay_height):
             if rectangle:
                 rectangle(style=self._viewport_overlay_panel_style())
-            with ui.VStack(width=HOVER_DETECTION_OVERLAY_WIDTH, height=HOVER_DETECTION_OVERLAY_HEIGHT, spacing=0):
+            with ui.VStack(width=HOVER_DETECTION_OVERLAY_WIDTH, height=overlay_height, spacing=0):
                 ui.Spacer(height=8)
                 with ui.HStack(height=28, spacing=8):
                     ui.Spacer(width=10)
                     self._build_hover_detection_type_icon(state)
                     ui.Label("Hover preview", height=24, style=self._hover_detection_title_style())
                     ui.Spacer()
-                for label, value in list(state.get("rows") or [])[:5]:
+                for label, value in list(state.get("rows") or []):
                     with ui.HStack(height=18, spacing=6):
                         ui.Spacer(width=12)
                         ui.Label(str(label), width=78, style=self._viewport_overlay_dim_label_style())
@@ -1205,6 +1215,11 @@ class PointCloudViewport:
                     ui.Spacer(height=5)
                     self._build_hover_detection_histogram(histogram)
                 ui.Spacer()
+
+    def _hover_detection_overlay_height(self, state):
+        row_count = len(list((state or {}).get("rows") or []))
+        extra_rows = max(0, row_count - HOVER_DETECTION_OVERLAY_BASE_ROWS)
+        return HOVER_DETECTION_OVERLAY_HEIGHT + extra_rows * HOVER_DETECTION_OVERLAY_ROW_HEIGHT
 
     def _build_hover_detection_type_icon(self, state):
         icon_path = state.get("icon_path")

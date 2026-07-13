@@ -1349,6 +1349,89 @@ class ViewportPickingTests(unittest.TestCase):
             spacers,
         )
 
+    def test_hover_detection_overlay_draws_all_rows_before_histogram(self):
+        view = self._make_view()
+        labels = []
+        zstacks = []
+
+        class UiContext:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        original_hstack = getattr(viewport.ui, "HStack", None)
+        original_vstack = getattr(viewport.ui, "VStack", None)
+        original_zstack = getattr(viewport.ui, "ZStack", None)
+        original_spacer = getattr(viewport.ui, "Spacer", None)
+        original_rectangle = getattr(viewport.ui, "Rectangle", None)
+        original_label = getattr(viewport.ui, "Label", None)
+        try:
+            viewport.ui.HStack = lambda **kwargs: UiContext()
+            viewport.ui.VStack = lambda **kwargs: UiContext()
+            viewport.ui.ZStack = lambda **kwargs: zstacks.append(dict(kwargs)) or UiContext()
+            viewport.ui.Spacer = lambda **kwargs: None
+            viewport.ui.Rectangle = lambda **kwargs: None
+            viewport.ui.Label = lambda text, **kwargs: labels.append(str(text))
+
+            view._build_hover_detection_overlay_body(
+                {
+                    "result_type": "Torus",
+                    "rows": [
+                        ("Seed Index", "1"),
+                        ("Inliers", "2 pts"),
+                        ("RMS", "1.2e-03"),
+                        ("Pos", "(1, 0, 0)"),
+                        ("Axis", "(0, 1, 0)"),
+                        ("Size", "R=2 r=0.5"),
+                    ],
+                    "histogram": {
+                        "max_bin_count": 1,
+                        "bins": [{"count": 1, "color": viewport.INLIER_ZERO_COLOR}],
+                    },
+                }
+            )
+        finally:
+            if original_hstack is None:
+                delattr(viewport.ui, "HStack")
+            else:
+                viewport.ui.HStack = original_hstack
+            if original_vstack is None:
+                delattr(viewport.ui, "VStack")
+            else:
+                viewport.ui.VStack = original_vstack
+            if original_zstack is None:
+                delattr(viewport.ui, "ZStack")
+            else:
+                viewport.ui.ZStack = original_zstack
+            if original_spacer is None:
+                delattr(viewport.ui, "Spacer")
+            else:
+                viewport.ui.Spacer = original_spacer
+            if original_rectangle is None:
+                delattr(viewport.ui, "Rectangle")
+            else:
+                viewport.ui.Rectangle = original_rectangle
+            if original_label is None:
+                delattr(viewport.ui, "Label")
+            else:
+                viewport.ui.Label = original_label
+
+        self.assertEqual(
+            [label for label in labels if label in {"Seed Index", "Inliers", "RMS", "Pos", "Axis", "Size"}],
+            ["Seed Index", "Inliers", "RMS", "Pos", "Axis", "Size"],
+        )
+        self.assertEqual(zstacks[0]["height"], viewport.HOVER_DETECTION_OVERLAY_MAX_HEIGHT)
+
+    def test_hover_detection_overlay_grows_upward_by_one_row(self):
+        view = self._make_view()
+        five_rows = {"rows": [(str(index), str(index)) for index in range(5)]}
+        six_rows = {"rows": [(str(index), str(index)) for index in range(6)]}
+
+        self.assertEqual(view._hover_detection_overlay_height(five_rows), viewport.HOVER_DETECTION_OVERLAY_HEIGHT)
+        self.assertEqual(view._hover_detection_overlay_height(six_rows), viewport.HOVER_DETECTION_OVERLAY_MAX_HEIGHT)
+
     def test_inlier_distance_histogram_is_unavailable_without_point_buffer(self):
         point_cloud = types.SimpleNamespace(
             points=[[0.9, 0.0, 0.0], [1.0, 0.0, 0.0], [1.1, 0.0, 0.0]],

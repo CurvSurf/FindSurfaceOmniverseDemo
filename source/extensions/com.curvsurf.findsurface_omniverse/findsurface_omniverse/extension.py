@@ -8157,6 +8157,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if seed_index is not None:
             rows.append(("Seed Index", seed_index))
         rows.extend([
+            ("Inliers", f"{len(getattr(result, 'inlier_indices', []) or []):,} pts"),
             ("RMS", self._format_scientific_metric(getattr(result, "rms_error", None))),
             ("Pos", self._format_vector(self._geometry_position(result))),
         ])
@@ -8166,7 +8167,6 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         size_summary = self._surface_size_summary(result)
         if size_summary:
             rows.append(("Size", size_summary))
-        rows.append(("Inliers", f"{len(getattr(result, 'inlier_indices', []) or []):,} pts"))
         return rows
 
     def _detection_type_icon_path(self, detection_type):
