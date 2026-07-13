@@ -30,9 +30,9 @@ applicable license terms.
 
 See what it looks like in action in the video below.
 
-[![video](https://img.youtube.com/vi/4gWRY8anV6E/maxresdefault.jpg)](https://www.youtube.com/watch?v=4gWRY8anV6E)
+[![video](https://img.youtube.com/vi/hA_PFlVpVh0/maxresdefault.jpg)](https://www.youtube.com/watch?v=hA_PFlVpVh0)
 
-Click the thumbnail above or [here](https://www.youtube.com/watch?v=4gWRY8anV6E) to watch the video on YouTube.
+Click the thumbnail above or [here](https://www.youtube.com/watch?v=hA_PFlVpVh0) to watch the video on YouTube.
 
 
 ## From Source
