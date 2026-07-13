@@ -126,6 +126,32 @@ async def _run_update_loop(extension_ref):
             extension = None
 
 
+async def _restore_window_layout_after_update(extension_ref, title):
+    try:
+        for _ in range(2):
+            await omni.kit.app.get_app().next_update_async()
+            extension = _live_extension(extension_ref)
+            if extension is None:
+                return
+            extension = None
+
+        extension = _live_extension(extension_ref)
+        if extension is None or not extension._is_window_visible(title):
+            return
+        extension._restore_window_layout_state(title)
+        extension._focus_window(extension._windows.get(title))
+        extension = None
+    except asyncio.CancelledError:
+        raise
+    finally:
+        extension = _live_extension(extension_ref)
+        if extension is not None:
+            getattr(extension, "_pending_layout_restore_titles", set()).discard(title)
+            extension._layout_restore_tasks = [
+                task for task in getattr(extension, "_layout_restore_tasks", []) if not task.done()
+            ]
+
+
 async def _dock_windows_after_update(extension_ref):
     try:
         for _ in range(3):
@@ -229,24 +255,6 @@ async def _refresh_parameter_pad_row_after_update(extension_ref):
         if extension is not None:
             extension._parameter_pad_refresh_task = None
         extension = None
-
-
-async def _dock_side_panel_tab_after_update(extension_ref, title):
-    try:
-        for _ in range(2):
-            await omni.kit.app.get_app().next_update_async()
-            extension = _live_extension(extension_ref)
-            if extension is None:
-                return
-            extension = None
-
-        extension = _live_extension(extension_ref)
-        if extension is None or not extension._is_window_visible(title):
-            return
-        extension._dock_side_panel_tab(title, focus=True, restore_visible=True)
-        extension = None
-    except asyncio.CancelledError:
-        raise
 
 
 class _ToolbarIconButton:
@@ -483,6 +491,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._workspace_path = None
         self._dock_task = None
         self._update_task = None
+        self._layout_restore_tasks = []
         self._geometry_refresh_task = None
         self._transactions_refresh_task = None
         self._findsurface_refresh_task = None
@@ -565,6 +574,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._geometries_last_scroll_y = None
         self._geometries_scroll_drag_active = False
         self._geometries_scroll_interaction_until = 0.0
+        self._toolbar_inspect_button = None
         self._toolbar_detection_buttons = {}
         self._toolbar_projection_buttons = {}
         self._visibility_buttons = {}
@@ -574,6 +584,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._hover_index = None
         self._selected_index = None
         self._detection_type = self._configured_detection_type()
+        self._detection_paused = False
         self._auto_detect_result = None
         self._auto_detect_source = None
         self._last_successful_auto_detect_result = None
@@ -619,6 +630,9 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._windows = {}
         self._menu_items = {}
         self._registered_actions = []
+        self._window_visibility_changed_callback_id = None
+        self._window_layout_state = {}
+        self._pending_layout_restore_titles = set()
         self._keyboard = None
         self._keyboard_input = None
         self._keyboard_subscription = None
@@ -701,7 +715,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             return {}
         directories = {}
         for key in FILE_DIALOG_DIRECTORY_KEYS:
-            directory = self._normalize_picker_directory(configured.get(key))
+            directory = self._resolve_extension_relative_directory(configured.get(key))
             if directory:
                 directories[key] = directory
         return directories
@@ -764,12 +778,33 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         directories[key] = directory
         config = getattr(self, "_app_config", None)
         if getattr(self, "_app_config_path", None) and isinstance(config, dict):
+            config_directory = self._portable_picker_directory_config_value(directory)
+            if config_directory is None:
+                return
             recent = config.get("recent_file_directories")
             if not isinstance(recent, dict):
                 recent = {}
                 config["recent_file_directories"] = recent
-            recent[key] = directory
+            recent[key] = config_directory
             self._write_app_config()
+
+    def _portable_picker_directory_config_value(self, directory):
+        directory = self._normalize_picker_directory(directory)
+        if not directory:
+            return None
+        if "://" in directory:
+            return directory
+        try:
+            directory_abs = os.path.abspath(directory)
+            root_abs = os.path.abspath(self._extension_root())
+            if os.path.commonpath([directory_abs, root_abs]) != root_abs:
+                return None
+            relative = os.path.relpath(directory_abs, root_abs)
+        except (OSError, ValueError):
+            return None
+        if relative == ".":
+            return "."
+        return os.path.normpath(relative).replace(os.sep, "/")
 
     def _write_app_config(self):
         config_path = getattr(self, "_app_config_path", None)
@@ -850,6 +885,10 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if self._dock_task:
             self._dock_task.cancel()
             self._dock_task = None
+        for task in getattr(self, "_layout_restore_tasks", []):
+            task.cancel()
+        self._layout_restore_tasks = []
+        self._pending_layout_restore_titles = set()
         if self._geometry_refresh_task:
             self._geometry_refresh_task.cancel()
             self._geometry_refresh_task = None
@@ -965,7 +1004,18 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._registered_actions.clear()
 
     def _clear_workspace_window_callbacks(self):
-        for title in list(self._windows.keys()):
+        workspace = getattr(ui, "Workspace", None)
+        callback_id = getattr(self, "_window_visibility_changed_callback_id", None)
+        if callback_id:
+            remove_callback = getattr(workspace, "remove_window_visibility_changed_callback", None)
+            if callable(remove_callback):
+                try:
+                    remove_callback(callback_id)
+                except Exception as exc:
+                    carb.log_warn(f"FindSurface workspace visibility callback cleanup failed: {exc}")
+        self._window_visibility_changed_callback_id = None
+
+        for title in list(getattr(self, "_windows", {}).keys()):
             try:
                 ui.Workspace.set_show_window_fn(title, None)
             except Exception as exc:
@@ -1180,6 +1230,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             "_selected_index_label",
             "_capture_button",
             "_toolbar_capture_button",
+            "_toolbar_inspect_button",
             "_tutorial_button",
             "_result_label",
             "_geometries_summary_label",
@@ -1220,6 +1271,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             getattr(self, "_save_button", None),
             getattr(self, "_capture_button", None),
             getattr(self, "_toolbar_capture_button", None),
+            getattr(self, "_toolbar_inspect_button", None),
             getattr(self, "_tutorial_button", None),
             getattr(self, "_undo_button", None),
             getattr(self, "_redo_button", None),
@@ -1457,13 +1509,15 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._apply_import_progress()
         self._apply_import_pending()
         viewport_blocked = self._is_modal_or_overlay_visible()
-        self._sync_viewport_picking_enabled(not viewport_blocked)
-        if not viewport_blocked:
+        detection_paused = self._is_detection_paused()
+        self._sync_viewport_picking_enabled(not viewport_blocked and not detection_paused)
+        if not viewport_blocked and not detection_paused:
             self._viewport.poll_hover_pick()
         else:
             self._clear_viewport_hover_pick()
         self._apply_auto_detect_pending()
         self._expire_auto_detect_preview()
+        self._capture_window_layout_state()
 
     def _register_actions(self):
         registry = omni.kit.actions.core.get_action_registry()
@@ -2047,9 +2101,20 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
         for title in self._windows:
             ui.Workspace.set_show_window_fn(title, lambda visible, window_title=title: self._show_window(window_title, visible))
+        self._register_window_visibility_changed_callback()
         self._refresh_detection_panel()
         self._refresh_toolbar_state()
         self._refresh_window_title()
+
+    def _register_window_visibility_changed_callback(self):
+        workspace = getattr(ui, "Workspace", None)
+        register = getattr(workspace, "set_window_visibility_changed_callback", None)
+        if not callable(register) or self._window_visibility_changed_callback_id is not None:
+            return
+        try:
+            self._window_visibility_changed_callback_id = register(self._on_window_visibility_changed)
+        except Exception as exc:
+            carb.log_warn(f"FindSurface window visibility callback registration failed: {exc}")
 
     def _set_window_minimum_size(self, window, min_width, min_height=None):
         if window is None:
@@ -2174,6 +2239,13 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                 image_size=self.TOOLBAR_LARGE_ICON_SIZE,
             )
             self._toolbar_separator()
+            self._toolbar_inspect_button = self._toolbar_icon_button(
+                "pointer.svg",
+                "Inspect geometries",
+                clicked_fn=self._set_inspect_mode,
+                image_size=self.TOOLBAR_LARGE_ICON_SIZE,
+            )
+            self._toolbar_gap()
             for detection_type in DETECTION_TYPES:
                 icon_name = f"detect_{detection_type.lower()}.svg"
                 shortcut = "Ctrl+`" if detection_type == "Auto" else f"Ctrl+{DETECTION_TYPES.index(detection_type)}"
@@ -2372,6 +2444,12 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             ui.Rectangle(width=1, height=self.TOOLBAR_SEPARATOR_LENGTH, style={"background_color": 0xFF4A4A4A})
             ui.Spacer(width=3)
 
+    def _toolbar_gap(self):
+        if self._is_toolbar_vertical():
+            ui.Spacer(height=10)
+        else:
+            ui.Spacer(width=10)
+
     def _visibility_button_text(self, label, visible):
         return f"{label} On" if visible else f"{label} Off"
 
@@ -2403,9 +2481,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if "probe_radius" not in self._models:
             self._models["probe_radius"] = ui.SimpleFloatModel(self._viewport.probe_radius_px)
         if "auto_detect" not in self._models:
-            self._models["auto_detect"] = ui.SimpleBoolModel(
-                app_config.config_bool(self._config(), ("detection", "auto_detect"), True)
-            )
+            self._models["auto_detect"] = ui.SimpleBoolModel(True)
         self._ensure_parameter_pad_axis_models()
         for name in self.RANGE_PARAMETER_DEFAULTS:
             self._subscribe_model(name, self._on_range_parameter_changed)
@@ -2434,7 +2510,6 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
         build_findsurface_window(
             FindSurfaceWindowModels(
-                auto_detect=self._models["auto_detect"],
                 lateral_extension=self._models["lateral_extension"],
                 radial_expansion=self._models["radial_expansion"],
             ),
@@ -5292,17 +5367,6 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._focus_window(window)
         return True
 
-    def _queue_side_panel_tab_dock(self, title):
-        if getattr(self, "_app_shutting_down", False):
-            return False
-        if title not in self._side_panel_tab_titles():
-            return False
-        try:
-            asyncio.ensure_future(_dock_side_panel_tab_after_update(weakref.ref(self), title))
-            return True
-        except Exception:
-            return False
-
     def _hide_toolbar_tab_bars(self):
         toolbar = self._windows.get(self.WINDOW_TOOLBAR)
         status_bar = self._windows.get(self.WINDOW_STATUS_BAR)
@@ -5578,6 +5642,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                 continue
             if value is not None:
                 snapshot[name] = value
+        snapshot["parameter_pad_axes"] = self._parameter_pad_axes_settings_snapshot()
         snapshot["outlier_points_visible"] = bool(getattr(self._viewport, "outlier_points_visible", True))
         snapshot["surface_meshes_visible"] = bool(getattr(self._viewport, "surface_meshes_visible", True))
         snapshot["inlier_points_visible"] = bool(getattr(self._viewport, "inlier_points_visible", True))
@@ -5653,7 +5718,45 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._on_display_settings_changed()
         if "probe_radius" in self._models:
             self._on_detection_settings_changed()
+        self._apply_parameter_pad_axes_settings(settings.get("parameter_pad_axes"))
+        self._sync_parameter_pad_after_settings()
         self._sync_camera_models()
+
+    def _parameter_pad_axes_settings_snapshot(self):
+        axes = getattr(self, "_parameter_pad_axes", None)
+        if not isinstance(axes, dict):
+            axes = dict(self.PARAMETER_PAD_DEFAULT_AXES)
+        result = {}
+        for axis in ("x", "y"):
+            value = axes.get(axis)
+            if value in self.PARAMETER_PAD_PARAMETERS:
+                result[axis] = value
+        return result
+
+    def _apply_parameter_pad_axes_settings(self, axes):
+        if not isinstance(axes, dict):
+            return False
+        if not hasattr(self, "_parameter_pad_axes") or not isinstance(self._parameter_pad_axes, dict):
+            self._parameter_pad_axes = dict(self.PARAMETER_PAD_DEFAULT_AXES)
+        changed = False
+        for axis in ("x", "y"):
+            value = axes.get(axis)
+            if value not in self.PARAMETER_PAD_PARAMETERS:
+                continue
+            if self._parameter_pad_axes.get(axis) != value:
+                self._parameter_pad_axes[axis] = value
+                changed = True
+        self._ensure_distinct_parameter_pad_axes()
+        for axis in ("x", "y"):
+            self._sync_parameter_pad_axis_model(axis)
+        return changed
+
+    def _sync_parameter_pad_after_settings(self):
+        self._active_parameter_pad = None
+        if hasattr(self, "_parameter_pad_positions"):
+            self._parameter_pad_positions.clear()
+        self._sync_parameter_pad_handle_from_models()
+        self._queue_parameter_pad_row_refresh()
 
     def _is_legacy_boolean_numeric_setting(self, name, value):
         if name in self.SETTINGS_BOOL_MODEL_NAMES:
@@ -6798,15 +6901,43 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             if not transaction:
                 self._apply_dirty_scope("content")
 
+    def _is_detection_paused(self):
+        return bool(getattr(self, "_detection_paused", False))
+
+    def _set_inspect_mode(self):
+        if self._is_detection_paused():
+            return
+        self._sync_parameter_transaction_from_models(finalize=True)
+        self._finalize_pending_parameter_change()
+        self._detection_paused = True
+        self._selected_index = None
+        self._clear_viewport_hover_pick()
+        if getattr(self, "_viewport", None):
+            self._viewport.set_pick_markers(None, None)
+        self._clear_auto_detect_preview()
+        self._sync_detection_surfaces()
+        self._refresh_detection_panel()
+        self._refresh_toolbar_state()
+        self._set_status("Detection paused: inspecting geometries")
+
+    def _resume_detection(self):
+        if not self._is_detection_paused():
+            return False
+        self._detection_paused = False
+        self._sync_viewport_picking_enabled(not self._is_modal_or_overlay_visible())
+        return True
+
     def _set_detection_type(self, detection_type):
-        if detection_type == self._detection_type:
+        was_paused = self._resume_detection()
+        if detection_type == self._detection_type and not was_paused:
             return
         self._sync_parameter_transaction_from_models(finalize=True)
         self._finalize_pending_parameter_change()
         state_before = self._parameter_transaction_state()
-        self._detection_type = detection_type
+        if detection_type != self._detection_type:
+            self._detection_type = detection_type
+            self._record_parameter_change("detection_type", state_before=state_before)
         self._set_status(f"Detection type: {detection_type}")
-        self._record_parameter_change("detection_type", state_before=state_before)
         self._refresh_toolbar_state()
         self._request_auto_detect()
 
@@ -6961,12 +7092,11 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         return f"{float(value):.4f}"
 
     def _is_auto_detect_enabled(self):
-        model = self._models.get("auto_detect")
-        if model is None:
-            return True
-        return bool(model and model.as_bool)
+        return not self._is_detection_paused()
 
     def _is_auto_detect_source_enabled(self, source):
+        if self._is_detection_paused():
+            return False
         if source == "hover":
             return self._is_auto_detect_enabled()
         return source == "selected"
@@ -7027,6 +7157,11 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         return False
 
     def _on_hover_changed(self, index):
+        if self._is_detection_paused():
+            self._hover_index = None
+            self._clear_auto_detect_preview()
+            self._refresh_detection_panel()
+            return
         self._hover_index = index
         self._refresh_detection_panel()
         if self._selected_index is not None and self._is_active_index(self._selected_index):
@@ -7034,11 +7169,17 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._request_auto_detect()
 
     def _on_seed_selected(self, index):
+        if self._is_detection_paused():
+            self._clear_auto_detect_preview()
+            return
         self._selected_index = index
         self._refresh_detection_panel()
         self._request_auto_detect()
 
     def _pick_center_seed(self):
+        if self._is_detection_paused():
+            self._set_status("Choose a detection type before picking a seed.")
+            return
         if not self._state:
             self._set_status("Import a point cloud before picking a seed.")
             return
@@ -7070,6 +7211,9 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
     def _request_auto_detect(self):
         if getattr(self, "_app_shutting_down", False):
+            return
+        if self._is_detection_paused():
+            self._clear_auto_detect_preview()
             return
         if not self._state:
             self._clear_auto_detect_preview()
@@ -7910,6 +8054,8 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         self._viewport.set_surfaces(surfaces)
 
     def _is_displayable_auto_detect_result(self, result):
+        if self._is_detection_paused():
+            return False
         if not self._state or result is None:
             return False
         if getattr(result, "active_generation", None) != self._state.generation:
@@ -8682,14 +8828,149 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
             self._point_count_label.text = f"{count:,} points"
         self._refresh_viewport_overlays()
 
+    def _on_window_visibility_changed(self, title, visible):
+        if getattr(self, "_app_shutting_down", False):
+            return
+        windows = getattr(self, "_windows", None)
+        if not windows or title not in windows:
+            return
+        self._sync_window_menu_item(title, visible)
+        if title == self.WINDOW_TUTORIAL:
+            self._refresh_toolbar_state()
+
+    def _capture_window_layout_state(self, title=None):
+        titles = (title,) if title else tuple(getattr(self, "_windows", {}).keys())
+        captured = False
+        for window_title in titles:
+            if window_title in getattr(self, "_pending_layout_restore_titles", set()):
+                continue
+            window = self._windows.get(window_title)
+            if not window or not bool(getattr(window, "visible", False)):
+                continue
+            try:
+                state = {
+                    "docked": bool(getattr(window, "docked", False)),
+                    "dock_id": getattr(window, "dock_id", None),
+                    "dock_order": getattr(window, "dock_order", None),
+                    "position_x": getattr(window, "position_x", None),
+                    "position_y": getattr(window, "position_y", None),
+                    "width": getattr(window, "width", None),
+                    "height": getattr(window, "height", None),
+                }
+            except Exception:
+                continue
+            self._window_layout_state[window_title] = state
+            captured = True
+        return captured
+
+    def _restore_window_layout_state(self, title):
+        window = self._windows.get(title)
+        state = self._window_layout_state.get(title)
+        if not window or not state:
+            return False
+        restored = False
+        try:
+            was_docked = bool(state.get("docked"))
+            is_docked = bool(getattr(window, "docked", False))
+            if was_docked and is_docked and state.get("dock_order") is not None:
+                window.dock_order = self._dock_order_to_restore(window, state.get("dock_order"))
+                restored = True
+            elif not was_docked and is_docked:
+                undock = getattr(window, "undock", None)
+                if callable(undock):
+                    undock()
+                    restored = True
+        except Exception as exc:
+            carb.log_warn(f"FindSurface window layout restore failed for {title}: {exc}")
+
+        if not bool(state.get("docked")) or not bool(getattr(window, "docked", False)):
+            for attr_name in ("position_x", "position_y", "width", "height"):
+                value = state.get(attr_name)
+                if value is None:
+                    continue
+                try:
+                    setattr(window, attr_name, value)
+                    restored = True
+                except Exception:
+                    pass
+        return restored
+
+    def _dock_order_to_restore(self, window, saved_order):
+        try:
+            order = int(saved_order)
+        except Exception:
+            return saved_order
+        order = max(0, order)
+        workspace = getattr(ui, "Workspace", None)
+        get_docked_windows = getattr(workspace, "get_docked_windows", None)
+        if not callable(get_docked_windows):
+            return order
+        try:
+            dock_id = getattr(window, "dock_id", None)
+            docked_windows = get_docked_windows(dock_id) if dock_id is not None else None
+        except Exception:
+            docked_windows = None
+        try:
+            docked_count = len(docked_windows)
+        except Exception:
+            docked_count = 0
+        if docked_count <= 0:
+            return order
+        return min(order, docked_count - 1)
+
+    def _queue_window_layout_restore(self, title):
+        if getattr(self, "_app_shutting_down", False) or title not in self._windows:
+            return False
+        try:
+            self._layout_restore_tasks = [
+                task for task in getattr(self, "_layout_restore_tasks", []) if not task.done()
+            ]
+            self._pending_layout_restore_titles.add(title)
+            task = asyncio.ensure_future(_restore_window_layout_after_update(weakref.ref(self), title))
+            self._layout_restore_tasks.append(task)
+            return True
+        except Exception:
+            return False
+
+    def _sync_window_menu_item(self, title, visible):
+        for item in self._menu_items.get("Window", []):
+            if getattr(item, "name", None) == title:
+                try:
+                    item.ticked = bool(visible)
+                except Exception:
+                    pass
+                break
+        self._refresh_menu_items("Window")
+
+    def _refresh_menu_items(self, menu_name):
+        menu_utils = omni.kit.menu.utils
+        for method_name in ("refresh_menu_items", "refresh_menu", "rebuild_menus", "rebuild_menu"):
+            method = getattr(menu_utils, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                method(menu_name)
+            except TypeError:
+                try:
+                    method()
+                except Exception:
+                    continue
+            except Exception:
+                continue
+            return
+
     def _toggle_window(self, title):
         window = self._windows.get(title)
         if window:
             visible = not window.visible
+            if not visible:
+                self._capture_window_layout_state(title)
             window.visible = visible
+            self._sync_window_menu_item(title, visible)
             if visible:
-                self._dock_side_panel_tab(title, focus=True, restore_visible=True)
-                self._queue_side_panel_tab_dock(title)
+                self._restore_window_layout_state(title)
+                self._queue_window_layout_restore(title)
+                self._focus_window(window)
         if title == self.WINDOW_TUTORIAL:
             self._refresh_toolbar_state()
 
@@ -8752,8 +9033,10 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         projection = getattr(camera, "projection_mode", PROJECTION_ORTHOGRAPHIC)
         for mode, button in getattr(self, "_toolbar_projection_buttons", {}).items():
             self._set_button_selected(button, mode == projection)
+        if getattr(self, "_toolbar_inspect_button", None):
+            self._set_button_selected(self._toolbar_inspect_button, self._is_detection_paused())
         for detection_type, button in getattr(self, "_toolbar_detection_buttons", {}).items():
-            self._set_button_selected(button, detection_type == self._detection_type)
+            self._set_button_selected(button, not self._is_detection_paused() and detection_type == self._detection_type)
         viewport = getattr(self, "_viewport", None)
         visibility = {
             "outliers": getattr(viewport, "outlier_points_visible", True),
@@ -8805,10 +9088,14 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
     def _show_window(self, title, visible):
         window = self._windows.get(title)
         if window:
+            if not visible:
+                self._capture_window_layout_state(title)
             window.visible = visible
+            self._sync_window_menu_item(title, visible)
             if visible:
-                self._dock_side_panel_tab(title, focus=True, restore_visible=True)
-                self._queue_side_panel_tab_dock(title)
+                self._restore_window_layout_state(title)
+                self._queue_window_layout_restore(title)
+                self._focus_window(window)
         if title == self.WINDOW_TUTORIAL:
             self._refresh_toolbar_state()
 

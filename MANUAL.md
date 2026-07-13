@@ -173,6 +173,7 @@ The viewport cursor contains two picking guides:
 
 | Icon | Name | Meaning |
 |:----:|:----:|:--------|
+| <img src="images/manual-icons/pointer.svg" width="24" alt="Inspect geometries"> | Inspect Geometries | Disables hover preview, point picking, and selected-point detection so existing geometries can be inspected without changing the active preview. |
 | <img src="images/manual-icons/detect_auto.svg" width="24" alt="Auto"> | Auto | Lets FindSurface choose the analytic type that best matches the seed region. Use this first when the target type is unknown. |
 | <img src="images/manual-icons/detect_plane.svg" width="24" alt="Plane"> | Plane | Detects a planar surface from the seed region and grown inliers. |
 | <img src="images/manual-icons/detect_sphere.svg" width="24" alt="Sphere"> | Sphere | Detects a sphere and reports its center and radius. |
@@ -182,9 +183,10 @@ The viewport cursor contains two picking guides:
 
 #### (7) Detection Parameters
 
-`Enable Hover Preview` runs detection continuously while the cursor moves over
-the point cloud. Disable it when you want to select a seed deliberately before
-running or capturing a preview.
+The `Inspect Geometries` toolbar mode turns off hover preview and point picking.
+Choose `Auto`, `Plane`, `Sphere`, `Cylinder`, `Cone`, or `Torus` to resume
+detection. While a detection type is selected, moving over active points runs a
+hover preview; clicking a point locks the seed and runs a selected preview.
 
 Range-parameter rows use the same layout:
 

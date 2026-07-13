@@ -78,6 +78,16 @@ class AppConfigTests(unittest.TestCase):
                 "data/presets/pointclouds",
             )
 
+    def test_missing_file_uses_seed_radius_as_parameter_pad_x_axis(self):
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "app_defaults.json"
+
+            config, _actual_path, created = app_config.load_app_config(str(path))
+
+            self.assertTrue(created)
+            self.assertEqual(config["parameter_pad"]["default_axes"]["x"], "seed_radius")
+            self.assertEqual(config["parameter_pad"]["default_axes"]["y"], "measurement_accuracy")
+
     def test_slider_index_overrides_range_parameter_value(self):
         config = {
             "detection": {
