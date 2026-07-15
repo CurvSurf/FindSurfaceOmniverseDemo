@@ -3602,13 +3602,13 @@ class CaptureFlowTests(unittest.TestCase):
 
             ext._set_dirty(True)
 
-            self.assertEqual(app_titles[-1], "FindSurface Omniverse v1.0.0: workspace.usda*")
+            self.assertEqual(app_titles[-1], "FindSurface Omniverse v1.1.1: workspace.usda*")
             self.assertEqual(viewport_window.title, "Viewport")
             self.assertEqual(viewport_window.name, "Viewport")
 
             ext._set_dirty(False)
 
-            self.assertEqual(app_titles[-1], "FindSurface Omniverse v1.0.0: workspace.usda")
+            self.assertEqual(app_titles[-1], "FindSurface Omniverse v1.1.1: workspace.usda")
             self.assertEqual(viewport_window.title, "Viewport")
             self.assertEqual(viewport_window.name, "Viewport")
         finally:
@@ -3667,7 +3667,7 @@ class CaptureFlowTests(unittest.TestCase):
 
             self.assertEqual(
                 native_titles[-1],
-                (native_window, "FindSurface Omniverse v1.0.0: workspace.usda*"),
+                (native_window, "FindSurface Omniverse v1.1.1: workspace.usda*"),
             )
             self.assertEqual(fallback_titles, [])
         finally:
@@ -3965,6 +3965,8 @@ class CaptureFlowTests(unittest.TestCase):
         self.assertIn("Detection Workflow", label_text)
         self.assertIn("Keyboard", label_text)
         self.assertIn("Orbit / Roll", label_text)
+        self.assertIn("Alt+Hover", label_text)
+        self.assertIn("Keep only successful previews; click selects the latest.", label_text)
         self.assertIn("Capture", label_text)
         self.assertIn("Types", label_text)
         self.assertEqual(len(zstacks), 3)

@@ -58,7 +58,7 @@ from .workspace import read_workspace, write_geometry_export, write_workspace
 
 
 EXTENSION_ID = "com.curvsurf.findsurface_omniverse"
-APP_WINDOW_TITLE = "FindSurface Omniverse v1.0.0"
+APP_WINDOW_TITLE = "FindSurface Omniverse v1.1.1"
 SAMPLE_TARGET_MIN = 100
 SAMPLE_TARGET_STEP = 100
 FILE_DIALOG_IMPORT_POINTS = "import_points"
@@ -4106,6 +4106,7 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
                 (
                     ("Preview", "Hover a point to preview the probe circle."),
                     ("Seed", "Click a point to select the seed."),
+                    ("Alt+Hover", "Keep only successful previews; click selects the latest."),
                     ("Capture", "Capture selected preview with the toolbar or Ctrl+C."),
                 ),
             )

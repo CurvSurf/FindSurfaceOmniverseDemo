@@ -67,10 +67,12 @@ a screenshot is explained in the section below that image.
 8. Inspect captured geometry in the `Geometries` tab, adjust visibility, undo or
    redo operations, and export the captured results as USD.
 
-If the hover preview looks correct but clicking the point produces a different
-or failed detection, hold `Alt` while hovering and click. The app selects the
-last visually displayed hover-preview geometry instead of recomputing from the
-new clicked seed.
+When detection succeeds only intermittently, hold `Alt` while searching with
+the cursor. While `Alt` is held, the red hover-point marker advances only when
+a hover detection succeeds, preserving the most recent successful seed and
+preview when later hover attempts fail. Click while still holding `Alt` to
+select that preserved seed and display its successful detection result instead
+of recomputing from the point currently under the cursor.
 
 ## Supported Input
 
@@ -376,10 +378,15 @@ while learning the app:
 | Mouse | Pan / Zoom | Middle drag pans. Mouse wheel zooms. |
 | Detection Workflow | Preview | Hover a point to preview the probe circle. |
 | Detection Workflow | Seed | Click a point to select the seed. |
+| Detection Workflow | Alt+Hover | Hold `Alt` while hovering to keep the red marker on the latest successful preview; click while holding `Alt` to select that seed and show its detection result. |
 | Detection Workflow | Capture | Capture the selected preview with the toolbar or `Ctrl+C`. |
 | Keyboard | Clear / Undo | `Esc` clears the seed, `Ctrl+Z` undoes, and `Ctrl+Shift+Z` redoes. |
 | Keyboard | Save | `Ctrl+S` saves the workspace. |
 | Keyboard | Types | ``Ctrl+` `` selects `Auto`; `Ctrl+1` through `Ctrl+5` select `Plane`, `Sphere`, `Cylinder`, `Cone`, and `Torus`. |
+
+Use `Alt+Hover` as a conservative selection mode when successful detections
+flicker or are easy to pass over. Failed hover attempts do not move the red
+marker, so you can stop on and select the last successful result.
 
 ## Detection Workflow
 
