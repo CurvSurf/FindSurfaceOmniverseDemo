@@ -1187,6 +1187,14 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
         if self._runtime_resources_released:
             return
         self._runtime_resources_released = True
+        provider = getattr(self, "_provider", None)
+        if provider is not None:
+            try:
+                close = getattr(provider, "close", None)
+                if close is not None:
+                    close()
+            except Exception as exc:
+                carb.log_warn(f"FindSurface provider cleanup failed: {exc}")
         if self._viewport:
             if hasattr(self._viewport, "release_scene_resources"):
                 self._viewport.release_scene_resources(clear_scene=True)

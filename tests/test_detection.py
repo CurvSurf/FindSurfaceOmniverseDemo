@@ -209,6 +209,7 @@ class DetectionTests(unittest.TestCase):
 
         sdk = Sdk()
         provider = detection.NativeFindSurfaceProvider(sdk)
+        self.addCleanup(provider.close)
         points = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]
         active_mask = [True, False, True]
         options = detection.DetectionOptions(detection_type="Plane")
@@ -267,6 +268,7 @@ class DetectionTests(unittest.TestCase):
 
         sdk = Sdk()
         provider = detection.NativeFindSurfaceProvider(sdk)
+        self.addCleanup(provider.close)
         points = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]
         active_mask = [True, False, True]
         options = detection.DetectionOptions(detection_type="Plane")
@@ -319,12 +321,22 @@ class DetectionTests(unittest.TestCase):
             provider.detect([[0.0, 0.0, 0.0]], [True], 0, options)
 
         self.assertNotIn("flags", sdk.calls)
+        self.assertNotIn("release", sdk.calls)
+
+        provider.close()
+
         self.assertIn("release", sdk.calls)
 
     def test_provider_enables_all_smart_conversion_options(self):
         class Sdk:
             def __init__(self):
                 self.boolean_calls = []
+
+            def create_context(self):
+                return object()
+
+            def release_context(self, context):
+                pass
 
             def set_float(self, *args):
                 pass
@@ -337,6 +349,7 @@ class DetectionTests(unittest.TestCase):
 
         sdk = Sdk()
         provider = detection.NativeFindSurfaceProvider(sdk)
+        self.addCleanup(provider.close)
 
         provider._apply_options(object(), detection.DetectionOptions(), 0)
 

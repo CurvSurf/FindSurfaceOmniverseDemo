@@ -3764,13 +3764,19 @@ class CaptureFlowTests(unittest.TestCase):
             def destroy(self, clear_scene=True):
                 calls.append(("destroy", clear_scene))
 
+        class ShutdownProvider:
+            def close(self):
+                calls.append(("close_provider", None))
+
+        ext._provider = ShutdownProvider()
         ext._viewport = ShutdownViewport()
         ext._app_shutting_down = True
 
         ext._release_runtime_resources_for_shutdown()
+        ext._release_runtime_resources_for_shutdown()
         ext._destroy_runtime_resources_for_shutdown()
 
-        self.assertEqual(calls, [("release", True), ("destroy", True)])
+        self.assertEqual(calls, [("close_provider", None), ("release", True), ("destroy", True)])
 
     def test_model_subscription_cleanup_unsubscribes_before_clearing(self):
         ext = make_extension()
