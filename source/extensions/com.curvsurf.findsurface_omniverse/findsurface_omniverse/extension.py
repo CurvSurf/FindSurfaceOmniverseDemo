@@ -1030,7 +1030,16 @@ class FindSurfaceBootstrapExtension(omni.ext.IExt):
 
     def _create_provider(self):
         try:
-            provider = FindSurfaceDetector()
+            library_path = os.environ.get("FINDSURFACE_APP_SDK_PATH")
+            if library_path:
+                from findsurface.bootstrap.native import NativeFindSurfaceProvider
+                from findsurface.bootstrap.findsurface_sdk.wrapper import FindSurfaceSdk
+
+                provider = FindSurfaceDetector(
+                    provider=NativeFindSurfaceProvider(sdk=FindSurfaceSdk(library_path=library_path))
+                )
+            else:
+                provider = FindSurfaceDetector()
             self._auto_detect_disabled_reason = None
             return provider
         except FileNotFoundError as exc:

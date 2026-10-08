@@ -45,7 +45,10 @@ git clone --recurse-submodules https://github.com/CurvSurf/FindSurface_Omniverse
 cd FindSurface_Omniverse_Demo
 ```
 
-Build and launch on Windows:
+On Windows, run `Start_Demo.bat` to reuse existing dependencies or prepare an
+app-private installation. `Remove_Demo.bat` removes only dependencies recorded
+as owned by this checkout. See [INSTALL.md](INSTALL.md) for location selection,
+upgrade and removal safety. The developer build/launch commands remain:
 
 ```powershell
 .\repo.bat build -c
@@ -80,6 +83,11 @@ repo tooling starts. This keeps dependency bootstrap independent of the host
 locale on Windows machines that use non-UTF-8 ANSI code pages.
 
 ## Thin Release Package
+
+New Windows packages include `Start_Demo.bat` and `Remove_Demo.bat` for the same
+ownership-aware workflow described in [INSTALL.md](INSTALL.md). Clean-machine
+validation of newly assembled packages remains a release gate. The original
+manual installation path below is also supported.
 
 The thin release zip does not include NVIDIA Omniverse Kit binaries. After
 receiving the zip file, extract it, open the extracted folder in a terminal,
