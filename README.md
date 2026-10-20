@@ -120,10 +120,13 @@ folder and Load at the workspace presets folder.
 ## Native FindSurface SDK
 
 The native FindSurface SDK binaries are distributed separately from this source
-repository. On startup, the demo tries to download the required `FindSurface.dll`
-or `libFindSurface.so` from the configured release endpoint. If the download
-fails or the file is missing, the app opens with detection disabled and shows a
-setup dialog.
+repository. The maintained launch scripts prepare `FindSurface.dll` or
+`libFindSurface.so` and ask before replacing a recognized installed SDK with an
+approved compatible update. Declining an update keeps the existing binary.
+See [Compatible SDK updates](INSTALL.md#compatible-sdk-updates).
+When launched directly without these scripts, the app retains its configured
+missing-SDK download fallback; if that fails, it opens with detection disabled
+and shows a setup dialog.
 
 See [NATIVE_SDK.md](NATIVE_SDK.md) for automatic download settings and the
 manual install paths for development checkouts and thin packages.

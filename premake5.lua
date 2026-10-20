@@ -11,6 +11,8 @@ repo_build.prebuild_copy {
     { "%{root}/INSTALL.md", "%{root}/_build/%{platform}/%{config}/INSTALL.md" },
     { "%{root}/tools/manage_installation.ps1", "%{root}/_build/%{platform}/%{config}/tools/manage_installation.ps1" },
     { "%{root}/tools/dependency_ownership.ps1", "%{root}/_build/%{platform}/%{config}/tools/dependency_ownership.ps1" },
+    { "%{root}/tools/update_sdk.py", "%{root}/_build/%{platform}/%{config}/tools/update_sdk.py" },
+    { "%{root}/tools/sdk_releases.json", "%{root}/_build/%{platform}/%{config}/tools/sdk_releases.json" },
     { "%{root}/tools/deps/user.toml", "%{root}/_build/deps/user.toml" },
     { "%{root}/source/native", "%{root}/_build/%{platform}/%{config}/source/native" },
 }

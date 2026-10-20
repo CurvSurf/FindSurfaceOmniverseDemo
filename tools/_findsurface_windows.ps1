@@ -67,8 +67,20 @@ function Ensure-FindSurfaceNativeRuntime {
         throw "FindSurface extension folder was not found: $extFolder"
     }
 
+    if ($env:FINDSURFACE_APP_SDK_PATH) {
+        if (-not (Test-Path -LiteralPath $env:FINDSURFACE_APP_SDK_PATH -PathType Leaf)) {
+            throw 'Explicit FINDSURFACE_APP_SDK_PATH does not exist.'
+        }
+        return
+    }
     $sdkPath = Get-FindSurfaceSdkPath -ExtensionRoot $ExtensionRoot
-    if (-not (Test-Path -LiteralPath $sdkPath -PathType Leaf)) {
+    $defaultRoot = Join-Path $ProjectRoot 'source\extensions\com.findsurface.bootstrap'
+    if ([IO.Path]::GetFullPath($ExtensionRoot) -eq [IO.Path]::GetFullPath($defaultRoot)) {
+        $python = $env:PYTHON
+        if (-not $python) { $python = 'python' }
+        & $python -B (Join-Path $PSScriptRoot 'update_sdk.py') --sdk-path $sdkPath --asset-key windows-x86_64
+        if ($LASTEXITCODE -ne 0) { throw 'FindSurface SDK preparation failed.' }
+    } elseif (-not (Test-Path -LiteralPath $sdkPath -PathType Leaf)) {
         Write-Host "FindSurface SDK binary was not found; downloading it now: $sdkPath"
         Invoke-FindSurfaceSdkAcquisition -ExtensionRoot $ExtensionRoot
     }

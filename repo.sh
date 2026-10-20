@@ -35,6 +35,16 @@ if [[ -f "${OMNI_REPO_ROOT}/repo-cache.json" ]]; then
     fi
 fi
 
+if [[ "${1:-}" == "launch" && -z "${FINDSURFACE_APP_SDK_PATH:-}" ]]; then
+    sdk_root="${OMNI_REPO_ROOT}/source/extensions/com.findsurface.bootstrap"
+    if [[ ! -f "$sdk_root/config/extension.toml" ]]; then
+        echo 'Initialize submodules and build the app before launching.' >&2
+        exit 1
+    fi
+    "${OMNI_REPO_ROOT}/tools/packman/python.sh" "${OMNI_REPO_ROOT}/tools/update_sdk.py" \
+        --sdk-path "$sdk_root/data/native/linux-x86_64/libFindSurface.so" --asset-key linux-x86_64
+fi
+
 if [[ "${1:-}" == "launch" && "$#" -eq 1 ]]; then
     set -- launch com.curvsurf.findsurface_omniverse_demo.kit
 fi

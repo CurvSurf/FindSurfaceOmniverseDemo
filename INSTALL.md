@@ -28,9 +28,9 @@ ownership. No global PATH or environment settings are changed.
 - Packman, pip and uv cache paths are directed into the private root. Inherited
   Packman bootstrap variables are cleared for setup and restored afterwards.
 - A missing DLL is downloaded over HTTPS into the private root, verified against
-  the configured release's pinned SHA-256, and passed through the child process's
+  the approved release's SHA-256, and passed through the child process's
   `FINDSURFACE_APP_SDK_PATH`. DLLs are not stored in Git. A new SDK release requires
-  updating its tag and verified digest together.
+  updating the approved release policy in `tools/sdk_releases.json`.
 
 NVIDIA's applicable license terms must be accepted before downloading runtime
 dependencies. Download failures retain partial files for diagnosis; verified
@@ -46,6 +46,41 @@ than silently reused: inspect it, remove the private installation, then retry.
 `-PrepareOnly` validates/prepares dependencies without opening the app. Ordinary
 developer `repo.bat` commands remain available and retain their existing cache
 behavior; they are not automatically adopted as owned installations.
+
+## Compatible SDK updates
+
+`Start_Demo.bat`, source `repo.bat launch` / `repo.sh launch`, and the
+`tools/launch.ps1` / `tools/launch.sh` helpers check the explicitly approved
+release policy before launch. The policy currently approves v1.0.1 as a
+compatible bug-fix update to v1.0.0. Other releases are not adopted automatically.
+
+When an older official SDK is found, the console shows the installed and new
+versions, the exact file to replace, and the release notes. Answer `y` to
+`Update now? [y/N]:` to accept, or press Enter to keep the installed version.
+The candidate is downloaded to a temporary file in the SDK directory, checked
+against SHA-256, and loaded in a separate process to check the existing API
+symbols and context creation. Only then is it atomically substituted for the
+old binary. No old binary backup is left behind. A declined update, unavailable
+network/release, invalid candidate, or locked destination preserves the existing
+SDK. Close running demo apps before accepting an update on Windows.
+
+App-private SDKs and recognized official binaries in the default bootstrap
+folder are eligible. Unknown/custom files and explicitly selected external SDK
+paths are preserved. Recognized bootstrap files keep their external removal
+ownership: consenting to an update does not authorize the remover to delete
+them. Update receipts/locks live under `.installation/sdk-updates/`.
+
+Windows v1.0.1 is pinned to the approved binary's SHA-256. Linux v1.0.1 requires
+a SHA-256 digest in the approved GitHub release asset metadata. Until v1.0.1 is
+published, an installed v1.0.0 continues to run; a fresh installation can still
+download the retained, hash-pinned v1.0.0 release. Offline first installation
+still requires a manually supplied SDK.
+
+After publishing v1.0.1, run `Start_Demo.bat -PrepareOnly` to exercise the prompt
+and replacement without opening Kit. Run it again to confirm the installed
+version is recognized without another update prompt. Test rejection first if
+you want to retain v1.0.0 for both paths. The normal app launch uses the same
+preparation logic.
 
 ## Safe removal
 

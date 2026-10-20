@@ -15,9 +15,18 @@ the matching binary from the release configured by the bootstrap extension. If
 the download fails because the computer is offline or the release asset does not
 exist, the app still opens but FindSurface detection is disabled.
 
-## Automatic Download
+## Launcher updates
 
-The release source of truth is:
+The maintained launch scripts check `tools/sdk_releases.json` for approved
+compatible releases and ask before replacing an installed official SDK. The
+current approved update is v1.0.1. See [Compatible SDK updates](INSTALL.md#compatible-sdk-updates)
+for verification, preservation rules and the default-no prompt. Each source
+and thin package must include both `tools/update_sdk.py` and its policy file.
+
+## Legacy in-app automatic download
+
+When the app is launched directly without the updated scripts, its fallback
+download configuration remains:
 
 ```text
 source/extensions/com.findsurface.bootstrap/config/sdk_release.json
@@ -38,7 +47,8 @@ Windows: FindSurface.dll
 Linux:   libFindSurface.so
 ```
 
-Set `FINDSURFACE_SDK_AUTO_DOWNLOAD=0` to disable automatic download.
+Set `FINDSURFACE_SDK_AUTO_DOWNLOAD=0` to disable this legacy in-app download.
+It does not disable the launch scripts' separate SDK preparation step.
 
 ## Manual Install
 

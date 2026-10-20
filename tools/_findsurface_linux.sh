@@ -139,6 +139,13 @@ EOF
         return 1
     fi
 
+    if [[ -n "${FINDSURFACE_APP_SDK_PATH:-}" ]]; then
+        [[ -f "$FINDSURFACE_APP_SDK_PATH" ]] || {
+            echo 'Explicit FINDSURFACE_APP_SDK_PATH does not exist.' >&2
+            return 1
+        }
+        return 0
+    fi
     local core_sdk_path
     local core_sdk_asset_key
     core_sdk_path="$(findsurface_core_sdk_path "$extension_root")" || {
@@ -151,7 +158,9 @@ EOF
         *) echo "Unsupported platform for FindSurface SDK: $(uname -s)" >&2; return 1 ;;
     esac
 
-    if [[ ! -f "$core_sdk_path" ]]; then
+    if [[ "$extension_root" == "$(findsurface_default_extension_root "$project_root")" ]]; then
+        "${PYTHON:-python3}" "$project_root/tools/update_sdk.py" --sdk-path "$core_sdk_path" --asset-key "$core_sdk_asset_key" || return 1
+    elif [[ ! -f "$core_sdk_path" ]]; then
         echo "FindSurface native SDK library was not found; downloading it now: $core_sdk_path"
         findsurface_fetch_core_sdk "$extension_root" "$core_sdk_asset_key" || return 1
     fi

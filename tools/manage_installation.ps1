@@ -167,19 +167,32 @@ function Start-Installation {
     $sdk = Join-Path $bootstrap 'data\native\windows-x86_64\FindSurface.dll'
     if ($record.sdk -and (Test-Path $record.sdk.path -PathType Leaf)) {
         $sdk = $record.sdk.path
-        if ($record.sdk.ownership -eq 'private' -and ((Get-Sha256 $sdk) -ne $record.sdk.sha256 -or
-            $sdk -ne (Join-Path $root 'sdk\FindSurface.dll'))) { throw 'Private SDK path/hash mismatch.' }
-    } elseif (-not (Test-Path $sdk -PathType Leaf)) {
-        $sdk = Join-Path $root 'sdk\FindSurface.dll'
-        $release = Read-Json (Join-Path $bootstrap 'config\sdk_release.json')
-        if ($release.release_tag -ne 'v1.0.0') { throw 'Update the installer SDK digest for the new release before downloading.' }
-        $url = $release.release_base_url + '/' + $release.release_tag + '/' + $release.assets.'windows-x86_64'
-        Receive-VerifiedFile $url $sdk '559ad2f68323790f10ba71c2416df1f3b115fed2b683482f25b0244a554cf230'
-    }
+        if ($record.sdk.ownership -eq 'private') {
+            if ($sdk -ne (Join-Path $root 'sdk\FindSurface.dll')) { throw 'Private SDK path mismatch.' }
+            $actualDigest = Get-Sha256 $sdk
+            if ($actualDigest -ne $record.sdk.sha256) {
+                # Recover if a completed approved replacement preceded a crash
+                # while saving the ownership manifest. Unknown modifications fail closed.
+                $policy = Read-Json (Join-Path $PSScriptRoot 'sdk_releases.json')
+                $approvedDigests = @($policy.releases | ForEach-Object { $_.assets.'windows-x86_64'.sha256 })
+                if ($actualDigest -notin $approvedDigests) { throw 'Private SDK hash mismatch.' }
+                Write-Host 'Recognized an approved SDK replacement; refreshing its ownership digest.'
+            }
+        }
+    } elseif (-not (Test-Path $sdk -PathType Leaf)) { $sdk = Join-Path $root 'sdk\FindSurface.dll' }
     $python = Join-Path $runtime 'python\python.exe'
+    $privateSdk = Join-Path $root 'sdk\FindSurface.dll'
+    $defaultSdk = Join-Path $bootstrap 'data\native\windows-x86_64\FindSurface.dll'
+    if ($sdk -eq $privateSdk -or $sdk -eq $defaultSdk) {
+        $updateArguments = @('-B', (Join-Path $PSScriptRoot 'update_sdk.py'), '--sdk-path', $sdk,
+                            '--asset-key', 'windows-x86_64')
+        if ($sdk -eq $privateSdk) { $updateArguments += '--managed' }
+        & $python @updateArguments
+        if ($LASTEXITCODE -ne 0) { throw 'FindSurface SDK preparation failed; existing files were preserved.' }
+    } else { Write-Host "Preserving explicitly configured external SDK: $sdk" }
     & $python -B -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1])' $sdk
     if ($LASTEXITCODE -ne 0) { throw 'SDK load check failed.' }
-    $ownership = if ($sdk -eq (Join-Path $root 'sdk\FindSurface.dll')) {'private'} else {'external'}
+    $ownership = if ($sdk -eq $privateSdk) {'private'} else {'external'}
     $record.sdk = @{path=$sdk; ownership=$ownership; sha256=(Get-Sha256 $sdk)}
     Write-JsonAtomic $record $RecordPath
     Write-Host "Kit ($($record.runtime.ownership)): $runtime"
