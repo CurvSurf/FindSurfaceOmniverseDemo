@@ -1,0 +1,8 @@
+{
+  "launcher_id": "com.curvsurf.findsurface_omniverse_launcher",
+  "title": "FindSurface Omniverse Demo",
+  "main_extension": "com.curvsurf.findsurface_omniverse",
+  "experience": "com.curvsurf.findsurface_omniverse_demo.kit",
+  "runtime_kind": "kit",
+  "runtime_version": "110.1.2"
+}

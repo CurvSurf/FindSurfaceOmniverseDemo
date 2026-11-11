@@ -1,0 +1,14 @@
+{
+  "repository": "CurvSurf/FindSurfaceOmniverseDemo",
+  "release_tag": "v1.2.0",
+  "extension_id": "com.curvsurf.findsurface_omniverse_launcher",
+  "kind": "launcher",
+  "kit_version": "110.1.2",
+  "picker": {
+    "windows-x86_64": "FindSurfacePicking.dll",
+    "linux-x86_64": "libFindSurfacePicking.so"
+  },
+  "supported_platforms": [
+    "windows-x86_64"
+  ]
+}
