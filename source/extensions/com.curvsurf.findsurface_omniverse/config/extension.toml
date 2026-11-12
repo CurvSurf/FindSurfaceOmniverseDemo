@@ -3,7 +3,7 @@ title = "FindSurface Omniverse App"
 version = "1.0.0"
 description = "Point-cloud import, viewport picking, visualization, workspace, and geometry export workflows built on the reusable FindSurface extension."
 category = "example"
-keywords = ["findsurface", "point-cloud", "geometry-detection", "omniverse-app"]
+keywords = ["findsurface", "curvsurf", "geometry", "detection", "pointcloud", "cad", "3d-data-processing", "demo"]
 
 [package.target]
 kit = ["110.1.2"]
