@@ -5,6 +5,8 @@ description = "CurvSurf FindSurface demo application for NVIDIA Omniverse Kit."
 keywords = ["app", "findsurface", "point-cloud", "geometry-detection"]
 
 [settings]
+# Suppress the renderer startup dialog; IOMMU warnings remain in the log.
+persistent.renderer.startupMessageDisplayed = true
 app.name = "FindSurface"
 app.version = "1.0.0"
 app.window.title = "FindSurface Omniverse"

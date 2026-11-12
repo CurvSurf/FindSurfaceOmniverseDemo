@@ -2,8 +2,12 @@
 title = "FindSurface Omniverse App"
 version = "1.0.0"
 description = "Point-cloud import, viewport picking, visualization, workspace, and geometry export workflows built on the reusable FindSurface extension."
-category = "Geometry"
+category = "example"
 keywords = ["findsurface", "point-cloud", "geometry-detection", "omniverse-app"]
+
+[package.target]
+kit = ["110.1.2"]
+platform = ["windows-x86_64", "linux-x86_64"]
 
 [dependencies]
 "omni.ui" = {}
