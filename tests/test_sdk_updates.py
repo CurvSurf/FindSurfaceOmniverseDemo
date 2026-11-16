@@ -244,7 +244,7 @@ class SdkUpdateRoutingTests(unittest.TestCase):
 class NativeSdkReplacementTests(unittest.TestCase):
     def test_real_candidate_validation_and_atomic_replacement(self):
         candidate = os.environ.get("FINDSURFACE_TEST_NEW_SDK_PATH")
-        old = ROOT / "source/extensions/com.findsurface.bootstrap/data/native/windows-x86_64/FindSurface.dll"
+        old = ROOT / "source/extensions/curvsurf.findsurface.core/data/native/windows-x86_64/FindSurface.dll"
         if os.name != "nt" or not candidate or not old.is_file():
             self.skipTest("Requires an existing Windows SDK and FINDSURFACE_TEST_NEW_SDK_PATH")
         policy = json.loads(updater.POLICY_PATH.read_text(encoding="utf-8"))

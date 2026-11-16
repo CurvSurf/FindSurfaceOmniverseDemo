@@ -131,7 +131,7 @@ function Get-LaunchArguments([string]$Runtime) {
 
 function Start-Installation {
     $extensionFolder = Get-SourceExtensionFolder
-    $bootstrap = Join-Path $extensionFolder 'com.findsurface.bootstrap'
+    $bootstrap = Join-Path $extensionFolder 'curvsurf.findsurface.core'
     if (-not (Test-Path (Join-Path $bootstrap 'config\extension.toml'))) {
         if (-not (Test-Path (Join-Path $ProjectRoot '.git'))) { throw 'Use the thin release ZIP or a recursive clone, not the automatic Source ZIP.' }
         & git.exe -c "safe.directory=$($ProjectRoot.Replace('\','/'))" -C $ProjectRoot submodule update --init --recursive

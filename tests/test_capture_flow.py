@@ -12,7 +12,7 @@ from threading import Lock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EXTENSION_ROOT = PROJECT_ROOT / "source" / "extensions" / "com.findsurface.bootstrap"
+EXTENSION_ROOT = PROJECT_ROOT / "source" / "extensions" / "curvsurf.findsurface.core"
 APP_ROOT = (
     PROJECT_ROOT
     / "source"
@@ -6360,7 +6360,7 @@ class CaptureFlowTests(unittest.TestCase):
 
     def test_build_menus_adds_edit_undo_redo_reset(self):
         ext = make_extension()
-        ext._ext_id = "com.findsurface.bootstrap"
+        ext._ext_id = "curvsurf.findsurface.core"
         captured = {}
         original_description = extension.MenuItemDescription
         original_add = extension.omni.kit.menu.utils.add_menu_items

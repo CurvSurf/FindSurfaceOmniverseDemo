@@ -26,8 +26,8 @@ findsurface_require_kit_executable() {
 
 findsurface_default_extension_root() {
     local project_root="$1"
-    if [[ -f "$project_root/source/extensions/com.findsurface.bootstrap/config/extension.toml" ]]; then
-        printf '%s\n' "$project_root/source/extensions/com.findsurface.bootstrap"
+    if [[ -f "$project_root/source/extensions/curvsurf.findsurface.core/config/extension.toml" ]]; then
+        printf '%s\n' "$project_root/source/extensions/curvsurf.findsurface.core"
     elif [[ -f "$project_root/FindSurfaceExtension/config/extension.toml" ]]; then
         printf '%s\n' "$project_root/FindSurfaceExtension"
     else
@@ -71,8 +71,8 @@ findsurface_core_sdk_path() {
         Linux*)
             if [[ -f "$extension_root/data/native/linux-x86_64/libFindSurface.so" ]] || [[ -f "$extension_root/config/extension.toml" ]]; then
                 printf '%s\n' "$extension_root/data/native/linux-x86_64/libFindSurface.so"
-            elif [[ -f "$extension_root/source/extensions/com.findsurface.bootstrap/data/native/linux-x86_64/libFindSurface.so" ]]; then
-                printf '%s\n' "$extension_root/source/extensions/com.findsurface.bootstrap/data/native/linux-x86_64/libFindSurface.so"
+            elif [[ -f "$extension_root/source/extensions/curvsurf.findsurface.core/data/native/linux-x86_64/libFindSurface.so" ]]; then
+                printf '%s\n' "$extension_root/source/extensions/curvsurf.findsurface.core/data/native/linux-x86_64/libFindSurface.so"
             else
                 printf '%s\n' "$extension_root/FindSurface/lib/libFindSurface.so"
             fi
@@ -80,8 +80,8 @@ findsurface_core_sdk_path() {
         MINGW*|MSYS*|CYGWIN*)
             if [[ -f "$extension_root/data/native/windows-x86_64/FindSurface.dll" ]] || [[ -f "$extension_root/config/extension.toml" ]]; then
                 printf '%s\n' "$extension_root/data/native/windows-x86_64/FindSurface.dll"
-            elif [[ -f "$extension_root/source/extensions/com.findsurface.bootstrap/data/native/windows-x86_64/FindSurface.dll" ]]; then
-                printf '%s\n' "$extension_root/source/extensions/com.findsurface.bootstrap/data/native/windows-x86_64/FindSurface.dll"
+            elif [[ -f "$extension_root/source/extensions/curvsurf.findsurface.core/data/native/windows-x86_64/FindSurface.dll" ]]; then
+                printf '%s\n' "$extension_root/source/extensions/curvsurf.findsurface.core/data/native/windows-x86_64/FindSurface.dll"
             else
                 printf '%s\n' "$extension_root/FindSurface/bin/FindSurface.dll"
             fi

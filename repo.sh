@@ -36,7 +36,7 @@ if [[ -f "${OMNI_REPO_ROOT}/repo-cache.json" ]]; then
 fi
 
 if [[ "${1:-}" == "launch" && -z "${FINDSURFACE_APP_SDK_PATH:-}" ]]; then
-    sdk_root="${OMNI_REPO_ROOT}/source/extensions/com.findsurface.bootstrap"
+    sdk_root="${OMNI_REPO_ROOT}/source/extensions/curvsurf.findsurface.core"
     if [[ ! -f "$sdk_root/config/extension.toml" ]]; then
         echo 'Initialize submodules and build the app before launching.' >&2
         exit 1

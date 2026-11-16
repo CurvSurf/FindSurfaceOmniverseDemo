@@ -8,7 +8,7 @@ function Resolve-FindSurfaceExtensionRoot {
         return (Resolve-Path $RequestedRoot).Path
     }
 
-    $submoduleRoot = Join-Path $ProjectRoot "source\extensions\com.findsurface.bootstrap"
+    $submoduleRoot = Join-Path $ProjectRoot "source\extensions\curvsurf.findsurface.core"
     if (Test-Path -LiteralPath (Join-Path $submoduleRoot "config\extension.toml") -PathType Leaf) {
         return (Resolve-Path $submoduleRoot).Path
     }
@@ -74,7 +74,7 @@ function Ensure-FindSurfaceNativeRuntime {
         return
     }
     $sdkPath = Get-FindSurfaceSdkPath -ExtensionRoot $ExtensionRoot
-    $defaultRoot = Join-Path $ProjectRoot 'source\extensions\com.findsurface.bootstrap'
+    $defaultRoot = Join-Path $ProjectRoot 'source\extensions\curvsurf.findsurface.core'
     if ([IO.Path]::GetFullPath($ExtensionRoot) -eq [IO.Path]::GetFullPath($defaultRoot)) {
         $python = $env:PYTHON
         if (-not $python) { $python = 'python' }

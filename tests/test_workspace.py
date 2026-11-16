@@ -9,7 +9,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_EXTENSION_ROOT = PROJECT_ROOT / "source" / "extensions" / "com.curvsurf.findsurface_omniverse"
-EXTENSION_ROOT = PROJECT_ROOT / "source" / "extensions" / "com.findsurface.bootstrap"
+EXTENSION_ROOT = PROJECT_ROOT / "source" / "extensions" / "curvsurf.findsurface.core"
 APP_ROOT = (
     APP_EXTENSION_ROOT
     / "findsurface_omniverse"

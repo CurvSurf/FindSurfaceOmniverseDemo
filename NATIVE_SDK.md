@@ -29,7 +29,7 @@ When the app is launched directly without the updated scripts, its fallback
 download configuration remains:
 
 ```text
-source/extensions/com.findsurface.bootstrap/config/sdk_release.json
+source/extensions/curvsurf.findsurface.core/config/sdk_release.json
 ```
 
 That file defines the GitHub release base URL, the release tag, and the asset
@@ -59,20 +59,20 @@ Development checkout paths:
 
 ```text
 Windows:
-source/extensions/com.findsurface.bootstrap/data/native/windows-x86_64/FindSurface.dll
+source/extensions/curvsurf.findsurface.core/data/native/windows-x86_64/FindSurface.dll
 
 Linux:
-source/extensions/com.findsurface.bootstrap/data/native/linux-x86_64/libFindSurface.so
+source/extensions/curvsurf.findsurface.core/data/native/linux-x86_64/libFindSurface.so
 ```
 
 Thin package paths:
 
 ```text
 Windows:
-exts/com.findsurface.bootstrap/data/native/windows-x86_64/FindSurface.dll
+exts/curvsurf.findsurface.core/data/native/windows-x86_64/FindSurface.dll
 
 Linux:
-exts/com.findsurface.bootstrap/data/native/linux-x86_64/libFindSurface.so
+exts/curvsurf.findsurface.core/data/native/linux-x86_64/libFindSurface.so
 ```
 
 After placing the file, restart the demo app. If the file is present but still

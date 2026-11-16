@@ -13,7 +13,7 @@ EXTENSION_REPO_ROOT = Path(os.environ.get("FINDSURFACE_EXTENSION_ROOT", PROJECT_
 if (EXTENSION_REPO_ROOT / "config" / "extension.toml").is_file():
     EXTENSION_ROOT = EXTENSION_REPO_ROOT
 else:
-    EXTENSION_ROOT = EXTENSION_REPO_ROOT / "source" / "extensions" / "com.findsurface.bootstrap"
+    EXTENSION_ROOT = EXTENSION_REPO_ROOT / "source" / "extensions" / "curvsurf.findsurface.core"
 APP_ROOT = (
     PROJECT_ROOT
     / "source"

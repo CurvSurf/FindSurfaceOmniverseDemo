@@ -32,11 +32,11 @@ for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "$PM_PACKAGES
 :RepoCacheEnd
 
 if /I "%~1"=="launch" if not defined FINDSURFACE_APP_SDK_PATH (
-    if not exist "%~dp0source\extensions\com.findsurface.bootstrap\config\extension.toml" (
+    if not exist "%~dp0source\extensions\curvsurf.findsurface.core\config\extension.toml" (
         echo Initialize submodules and build the app before launching.
         exit /b 1
     )
-    call "%~dp0tools\packman\python.bat" "%~dp0tools\update_sdk.py" --sdk-path "%~dp0source\extensions\com.findsurface.bootstrap\data\native\windows-x86_64\FindSurface.dll" --asset-key windows-x86_64
+    call "%~dp0tools\packman\python.bat" "%~dp0tools\update_sdk.py" --sdk-path "%~dp0source\extensions\curvsurf.findsurface.core\data\native\windows-x86_64\FindSurface.dll" --asset-key windows-x86_64
     if !errorlevel! neq 0 ( goto Error )
 )
 

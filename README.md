@@ -19,7 +19,7 @@ The app is split into two local Kit extensions:
 
 - `source/extensions/com.curvsurf.findsurface_omniverse`: app-owned UI,
   import, picking, workspace, and export workflows.
-- `source/extensions/com.findsurface.bootstrap`: reusable FindSurface SDK
+- `source/extensions/curvsurf.findsurface.core`: reusable FindSurface SDK
   wrapper, detection core API, and USD schema resources.
 
 NVIDIA Omniverse Kit binaries are not included in this repository. The Kit App

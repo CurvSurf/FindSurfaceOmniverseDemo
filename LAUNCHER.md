@@ -1,6 +1,6 @@
 # Demo launcher structure
 
-The core `com.findsurface.bootstrap` remains a reusable SDK extension.
+The core `curvsurf.findsurface.core` remains a reusable SDK extension.
 `com.curvsurf.findsurface_omniverse_launcher` opens a small launcher window. It does **not** depend on or enable
 `com.curvsurf.findsurface_omniverse` in the host. **Run Demo** starts the existing experience in a
 separate process, after checking for kit 110.1.2. Disabling the launcher

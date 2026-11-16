@@ -17,7 +17,7 @@ platform = ["windows-x86_64", "linux-x86_64"]
 "omni.kit.menu.utils" = {}
 "omni.kit.window.filepicker" = {}
 "omni.usd" = {}
-"com.findsurface.bootstrap" = {}
+"curvsurf.findsurface.core" = {}
 
 [[python.module]]
 name = "findsurface_omniverse.extension"
